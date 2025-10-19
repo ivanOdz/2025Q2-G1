@@ -60,6 +60,14 @@ module "events" {
   tags          = local.common_tags
 }
 
+# --- storage module (S3 buckets) ---
+module "storage" {
+  source = "./modules/storage"
+
+  project_name = local.base_name
+  tags         = local.common_tags
+}
+
 # --- backend module (APIgw/lambdas) ---
 module "backend" {
   source = "./modules/backend"
@@ -67,10 +75,14 @@ module "backend" {
   depends_on = [module.network, module.database, module.events]
 
   project_name      = local.base_name
+  vpc_id            = module.network.vpc_id
   lambda_subnet_ids = module.network.private_subnet_ids
 
   dynamodb_table_arn = module.database.table_arn
   sns_topic_arn      = module.events.sns_topic_arn
+
+  images_bucket_name = module.storage.images_bucket_name
+  images_bucket_arn  = module.storage.images_bucket_arn
 
   lambda_handlers_map = var.lambda_handlers
 
@@ -80,8 +92,6 @@ module "backend" {
 # --- frontend module ---
 module "frontend" {
   source = "./modules/frontend"
-
   project_name = local.base_name
-  account_id   = data.aws_caller_identity.current.account_id
   tags         = local.common_tags
 }

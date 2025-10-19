@@ -10,76 +10,11 @@ resource "aws_cognito_user_pool_client" "client" {
   generate_secret = false # no secret for public clients -> easier integration with API Gateway
 }
 
-# IAM Policies for Lambdas
-# base policy
-data "aws_iam_policy_document" "lambda_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-  }
-}
 
-# dynamo access policy
-data "aws_iam_policy_document" "dynamodb_access" {
-  statement {
-    actions   = [
-      "dynamodb:Query",
-      "dynamodb:Scan",
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem"
-    ]
-    resources = [var.dynamodb_table_arn, "${var.dynamodb_table_arn}/index/*"]
-  }
+# Usar LabRole existente de AWS Academy
+data "aws_iam_role" "lab_role" {
+  name = "LabRole"
 }
-resource "aws_iam_policy" "dynamodb" {
-  name   = "${var.project_name}-dynamodb-policy"
-  policy = data.aws_iam_policy_document.dynamodb_access.json
-}
-
-# SNS publish policy
-data "aws_iam_policy_document" "sns_publish" {
-  statement {
-    actions   = ["sns:Publish"]
-    resources = [var.sns_topic_arn]
-  }
-}
-resource "aws_iam_policy" "sns" {
-  name   = "${var.project_name}-sns-policy"
-  policy = data.aws_iam_policy_document.sns_publish.json
-}
-
-
-# LAMBDAS ---
-
-resource "aws_iam_role" "lambda_roles" {
-  # meta-argument 'for_each' to create one role per lambda -> min privilege
-  for_each           = var.lambda_handlers_map
-  name               = "${var.project_name}-${each.key}-role"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
-  tags               = var.tags
-
-  # vpc execution role policy
-  managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"]
-}
-
-# attach dynamo and sns policies to roles
-resource "aws_iam_role_policy_attachment" "dynamo_attach" {
-  for_each   = var.lambda_handlers_map
-  role       = aws_iam_role.lambda_roles[each.key].name
-  policy_arn = aws_iam_policy.dynamodb.arn
-}
-resource "aws_iam_role_policy_attachment" "sns_attach" {
-  # ONLY attach sns policy to lambdas that need it
-  for_each   = { for k, v in var.lambda_handlers_map : k => v if k != "notifications" }
-  role       = aws_iam_role.lambda_roles[each.key].name
-  policy_arn = aws_iam_policy.sns.arn
-}
-
 
 # prepare lambda deployment packages
 data "archive_file" "lambda_zip" {
@@ -93,7 +28,7 @@ resource "aws_lambda_function" "lambdas" {
   # meta-argument 'for_each' to create one lambda per handler
   for_each      = var.lambda_handlers_map
   function_name = "${var.project_name}-${each.value}"
-  role          = aws_iam_role.lambda_roles[each.key].arn
+  role          = data.aws_iam_role.lab_role.arn
   handler       = "app.handler" # TODO: app.py and handler functions as entry point (modificaciones en backend)
   runtime       = "python3.12"
 
@@ -109,19 +44,32 @@ resource "aws_lambda_function" "lambdas" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = split("-", var.dynamodb_table_arn)[-1]
+      DYNAMODB_TABLE = element(split("/", var.dynamodb_table_arn), length(split("/", var.dynamodb_table_arn)) - 1)
       SNS_TOPIC_ARN  = var.sns_topic_arn
+      IMAGES_BUCKET  = var.images_bucket_name
     }
   }
 
   tags = var.tags
 }
 
+# Lambda permissions para que API Gateway pueda invocar todas las lambdas
+resource "aws_lambda_permission" "api_gateway_invoke" {
+  for_each      = var.lambda_handlers_map
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambdas[each.key].function_name
+  principal     = "apigateway.amazonaws.com"
+  
+  # Permite que este API Gateway invoque desde cualquier endpoint
+  source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+}
+
 # lambda security group
 resource "aws_security_group" "lambda_sg" {
   name        = "${var.project_name}-lambda-sg"
   description = "SG para Lambdas en VPC"
-  vpc_id      = module.network.vpc_id
+  vpc_id      = var.vpc_id
 
   # TODO: mover esto al modulo network y pasarlo como variable a backend?
   egress {
@@ -183,5 +131,4 @@ resource "aws_api_gateway_deployment" "api_deploy" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api.id
-  stage_name  = "v1"
 }
