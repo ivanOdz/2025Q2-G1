@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -56,7 +56,7 @@ module "events" {
 
   project_name  = local.base_name
   account_id    = data.aws_caller_identity.current.account_id
-  region        = data.aws_region.current.name
+  region        = data.aws_region.current.id
   tags          = local.common_tags
 }
 
