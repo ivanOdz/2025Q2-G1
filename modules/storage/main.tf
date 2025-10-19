@@ -20,47 +20,43 @@ module "images_bucket" {
     enabled = false
   }
 
-  cors_rule = try(
-      [
-        {
-          allowed_headers = ["*"]
-          allowed_methods = ["GET", "PUT", "POST", "DELETE"]
-          allowed_origins = ["*"]
-          expose_headers  = ["ETag"]
-          max_age_seconds = 3000
-        }
-      ],
-      []
-  )
+  cors_rule = [
+                {
+                  allowed_headers = ["*"]
+                  allowed_methods = ["GET", "PUT", "POST", "DELETE"]
+                  allowed_origins = ["*"]
+                  expose_headers  = ["ETag"]
+                  max_age_seconds = 3000
+                }
+              ]
 
+}
 
-  lifecycle_rule = [
-    { 
-      id     = "delete-incomplete-multipart-uploads"
-      status = "Enabled"
-      
-      filter = {}
-      
-      abort_incomplete_multipart_upload = {
-        days_after_initiation = 7
-      }
-    },
-    { 
-      id     = "transition-old-images"
-      status = "Enabled"
-      
-      filter = {}
-      
-      transition = [
-        {
-          days          = 90
-          storage_class = "STANDARD_IA"  
-        },
-        {
-          days          = 365
-          storage_class = "GLACIER_IR" 
-        }
-      ]
+resource "aws_s3_bucket_lifecycle_configuration" "images_lifecycle" {
+  bucket = module.images_bucket.s3_bucket_id
+
+  rule {
+    id     = "delete-incomplete-multipart-uploads"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
-  ]
+  }
+
+  rule {
+    id     = "transition-old-images"
+    status = "Enabled"
+    filter {}
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA" 
+    }
+
+    transition {
+      days          = 365
+      storage_class = "GLACIER_IR"  
+    }
+  }
 }
