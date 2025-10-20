@@ -1,0 +1,1 @@
+# locals (naming, prefijos, cálculos)

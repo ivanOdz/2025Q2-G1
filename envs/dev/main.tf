@@ -1,3 +1,4 @@
+# Orquestación: invoca módulos locales y externos
 terraform {
   required_providers {
     aws = {
@@ -28,7 +29,7 @@ locals {
 
 # --- network module ---
 module "network" {
-  source = "./modules/network" # local
+  source = "../../deprecated_modules/network" # local
 
   project_name = local.base_name
   vpc_cidr     = "10.0.0.0/16"
@@ -41,7 +42,7 @@ module "network" {
 
 # --- bd module ---
 module "database" {
-  source = "./modules/database"
+  source = "../../deprecated_modules/database"
 
   # meta argument 'depends_on' used outside module
   depends_on = [module.network]
@@ -52,7 +53,7 @@ module "database" {
 
 # --- event module ---
 module "events" {
-  source = "./modules/events"
+  source = "../../deprecated_modules/events"
 
   project_name  = local.base_name
   account_id    = data.aws_caller_identity.current.account_id
@@ -62,7 +63,7 @@ module "events" {
 
 # --- storage module (S3 buckets) ---
 module "storage" {
-  source = "./modules/storage"
+  source = "../../deprecated_modules/storage"
 
   project_name = local.base_name
   tags         = local.common_tags
@@ -70,7 +71,7 @@ module "storage" {
 
 # --- backend module (APIgw/lambdas) ---
 module "backend" {
-  source = "./modules/backend"
+  source = "../../deprecated_modules/backend"
 
   depends_on = [module.network, module.database, module.events]
 
@@ -91,7 +92,7 @@ module "backend" {
 
 # --- frontend module ---
 module "frontend" {
-  source = "./modules/frontend"
+  source = "../../deprecated_modules/frontend"
   project_name = local.base_name
   tags         = local.common_tags
 }

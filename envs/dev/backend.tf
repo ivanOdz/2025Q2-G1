@@ -1,0 +1,1 @@
+# Estado remoto (S3/DynamoDB) SOLO tenemos que configurarla aca en modulos es una instancia generica
