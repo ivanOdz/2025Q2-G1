@@ -15,17 +15,6 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-locals {
-  # resources base name
-  base_name = "${var.project_name}-serverless"
-
-  common_tags = {
-    Project     = var.project_name
-    Environment = "dev"
-    ManagedBy   = "Terraform"
-    Owner       = "Grupo-TP-Cloud"
-  }
-}
 
 # --- network module ---
 module "network" {
@@ -51,14 +40,47 @@ module "database" {
   tags       = local.common_tags
 }
 
-# --- event module ---
-module "events" {
-  source = "../../deprecated_modules/events"
+# --- events resources ---
+# SNS topic
+resource "aws_sns_topic" "notifications" {
+  name = "${local.base_name}-notifications-topic"
+  tags = local.common_tags
+}
 
-  project_name  = local.base_name
-  account_id    = data.aws_caller_identity.current.account_id
-  region        = data.aws_region.current.id
-  tags          = local.common_tags
+# SQS queue
+resource "aws_sqs_queue" "notifications_queue" {
+  name = "${local.base_name}-notifications-queue"
+  tags = local.common_tags
+}
+
+# SNS -> SQS
+resource "aws_sns_topic_subscription" "sns_to_sqs" {
+  topic_arn = aws_sns_topic.notifications.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.notifications_queue.arn
+}
+
+# QUEUE POLICY to allow SNS to send messages to SQS
+data "aws_iam_policy_document" "sqs_policy" {
+  statement {
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.notifications_queue.arn]
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_sns_topic.notifications.arn]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "main" {
+  queue_url = aws_sqs_queue.notifications_queue.id
+  policy    = data.aws_iam_policy_document.sqs_policy.json
 }
 
 # --- storage module (S3 buckets) ---
@@ -73,14 +95,14 @@ module "storage" {
 module "backend" {
   source = "../../deprecated_modules/backend"
 
-  depends_on = [module.network, module.database, module.events]
+  depends_on = [module.network, module.database]
 
   project_name      = local.base_name
   vpc_id            = module.network.vpc_id
   lambda_subnet_ids = module.network.private_subnet_ids
 
   dynamodb_table_arn = module.database.table_arn
-  sns_topic_arn      = module.events.sns_topic_arn
+  sns_topic_arn      = aws_sns_topic.notifications.arn
 
   images_bucket_name = module.storage.images_bucket_name
   images_bucket_arn  = module.storage.images_bucket_arn
