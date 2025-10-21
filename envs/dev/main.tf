@@ -162,14 +162,6 @@ resource "aws_sqs_queue_policy" "main" {
   policy    = data.aws_iam_policy_document.sqs_policy.json
 }
 
-# --- storage module (S3 buckets) ---
-module "storage" {
-  source = "../../deprecated_modules/storage"
-
-  project_name = local.base_name
-  tags         = local.common_tags
-}
-
 # --- backend module (APIgw/lambdas) ---
 module "backend" {
   source = "../../deprecated_modules/backend"
@@ -183,17 +175,10 @@ module "backend" {
   dynamodb_table_arn = module.dynamodb_table.table_arn
   sns_topic_arn      = aws_sns_topic.notifications.arn
 
-  images_bucket_name = module.storage.images_bucket_name
-  images_bucket_arn  = module.storage.images_bucket_arn
+  images_bucket_name = module.images_bucket.bucket_id
+  images_bucket_arn  = module.images_bucket.bucket_arn
 
   lambda_handlers_map = var.lambda_handlers
 
   tags = local.common_tags
-}
-
-# --- frontend module ---
-module "frontend" {
-  source = "../../deprecated_modules/frontend"
-  project_name = local.base_name
-  tags         = local.common_tags
 }
