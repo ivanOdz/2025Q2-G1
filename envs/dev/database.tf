@@ -54,3 +54,172 @@ module "dynamodb_table" {
   
   tags = local.common_tags
 }
+
+
+# Users Table (optional)
+module "dynamodb_users" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-users"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = null
+
+  attributes = [
+    { name = "user_id", type = "S" },
+    { name = "email",   type = "S" }
+  ]
+
+  global_secondary_indexes = [
+    {
+      name            = "email-index"
+      hash_key        = "email"
+      projection_type = "ALL"
+    }
+  ]
+
+  # Avoid creating extra KMS resources or PITR to match original
+  encryption_enabled               = false
+  point_in_time_recovery_enabled   = false
+
+  tags = merge(local.common_tags, { Name = "package-tracking-users" })
+}
+
+# Addresses Table
+module "dynamodb_addresses" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-addresses"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "address_id"
+  range_key    = null
+
+  attributes = [
+    { name = "address_id", type = "S" }
+  ]
+
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
+
+    tags = merge(local.common_tags, { Name = "package-tracking-addresses"})
+
+}
+
+# Depots Table
+module "dynamodb_depots" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-depots"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "depot_id"
+  range_key    = null
+
+  attributes = [
+    { name = "depot_id", type = "S" }
+  ]
+
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
+
+
+  tags = merge(local.common_tags, { Name = "package-tracking-depots" })
+
+}
+
+# Packages Table
+module "dynamodb_packages" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-packages"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "package_id"
+  range_key    = null
+
+  attributes = [
+    { name = "package_id", type = "S" },
+    { name = "code",       type = "S" },
+    { name = "sender_id",  type = "S" },
+    { name = "state",      type = "S" }
+  ]
+
+  global_secondary_indexes = [
+    {
+      name            = "code-index"
+      hash_key        = "code"
+      projection_type = "ALL"
+    },
+    {
+      name            = "sender-index"
+      hash_key        = "sender_id"
+      projection_type = "ALL"
+    },
+    {
+      name            = "state-index"
+      hash_key        = "state"
+      projection_type = "ALL"
+    }
+  ]
+
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
+
+  tags = merge(local.common_tags, { Name = "package-tracking-packages"})
+}
+
+# Tracks Table
+module "dynamodb_tracks" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-tracks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "track_id"
+  range_key    = null
+
+  attributes = [
+    { name = "track_id",   type = "S" },
+    { name = "package_id", type = "S" }
+  ]
+
+  global_secondary_indexes = [
+    {
+      name            = "package-index"
+      hash_key        = "package_id"
+      projection_type = "ALL"
+    }
+  ]
+
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
+
+    tags = merge(local.common_tags, { Name = "package-tracking-tracks"})
+
+}
+
+# Package Images Table
+module "dynamodb_package_images" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-images"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "image_id"
+  range_key    = null
+
+  attributes = [
+    { name = "image_id",   type = "S" },
+    { name = "package_id", type = "S" }
+  ]
+
+  global_secondary_indexes = [
+    {
+      name            = "package-index"
+      hash_key        = "package_id"
+      projection_type = "ALL"
+    }
+  ]
+
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
+    tags = merge(local.common_tags, { Name = "package-tracking-images" })
+
+}
+
