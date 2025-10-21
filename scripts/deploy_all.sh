@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# =================================================================
+# USO: Se debe ejecutar desde la Carpeta Raíz del Proyecto:
+#      ./scripts/main_deploy.sh <dev|prod>
+
+if [ -z "$1" ]; then
+    echo "Error: Debe especificar el entorno (dev o prod) como argumento."
+    echo "Uso: ./scripts/main_deploy.sh <dev|prod>"
+    exit 1
+fi
+
+ENV=$1
+TERRAFORM_DIR="envs/$ENV" 
+TFVARS_FILE="$ENV.tfvars" 
+
+PACKAGE_SCRIPT="./scripts/package_backend.sh"
+DEPLOY_FRONTEND_SCRIPT="./scripts/deploy_frontend.sh"
+
+if [ ! -d "$TERRAFORM_DIR" ]; then
+    echo "Error: Directorio de Terraform para el entorno '$ENV' no encontrado en: $TERRAFORM_DIR"
+    echo "Asegúrate de que tus archivos de configuración (.tf) estén en la carpeta '$ENV/'."
+    exit 1
+fi
+
+echo "=== 1. PREPARACIÓN: Empaquetado del Backend (Lambda) ==="
+
+
+echo -e "\n=== 2. DESPLIEGUE DE INFRAESTRUCTURA (Terraform) ==="
+echo "Cambiando directorio de trabajo a: $TERRAFORM_DIR"
+cd $TERRAFORM_DIR || { echo "Error fatal: No se pudo cambiar al directorio $TERRAFORM_DIR. Abortando."; exit 1; }
+
+echo "Ejecutando 'terraform init'..."
+terraform init
+
+echo "Ejecutando 'terraform apply'..."
+terraform apply -auto-approve -var-file="$TFVARS_FILE"
+
+if [ $? -ne 0 ]; then
+    echo "Proceso detenido: Falló el 'terraform apply'."
+    cd ..
+    exit 1
+fi
+
+
+FRONTEND_BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
+API_URL=$(terraform output -raw api_gateway_base_url) 
+
+echo "FRONTEND_BUCKET_NAME: $FRONTEND_BUCKET_NAME"
+echo "API_URL: $API_URL"
+
+cd ..
+
+if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$API_URL" ]; then
+    echo "Proceso detenido: Faltan Outputs. Revisa la definición de 'frontend_bucket_name' y 'api_gateway_base_url'."
+    exit 1
+fi
+
+echo -e "\n=== 3. DESPLIEGUE DEL CONTENIDO (Frontend S3) ==="
+deploy_frontend.sh "$FRONTEND_BUCKET_NAME" "$API_URL" 
+
+if [ $? -ne 0 ]; then
+    echo "🚨 Proceso detenido: Falló el despliegue del frontend."
+    exit 1
+fi
+
+echo -e "\n=========================================="
+echo "🎉 Despliegue de Entorno $ENV COMPLETADO 🎉"
+echo "=========================================="
