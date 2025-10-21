@@ -3,7 +3,6 @@
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-
 # --- VPC module ---
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
@@ -108,23 +107,137 @@ resource "aws_sqs_queue_policy" "main" {
   policy    = data.aws_iam_policy_document.sqs_policy.json
 }
 
-# --- backend module (APIgw/lambdas) ---
-module "backend" {
-  source = "../../deprecated_modules/backend"
+# --- backend resources (APIgw/lambdas) ---
+# COGNITO
+resource "aws_cognito_user_pool" "pool" {
+  name = "${local.base_name}-user-pool"
+  tags = local.common_tags
+}
 
-  depends_on = [module.vpc, module.dynamodb_table]
+resource "aws_cognito_user_pool_client" "client" {
+  name         = "${local.base_name}-client"
+  user_pool_id = aws_cognito_user_pool.pool.id
+  generate_secret = false # no secret for public clients -> easier integration with API Gateway
+}
 
-  project_name      = local.base_name
-  vpc_id            = module.vpc.vpc_id
-  lambda_subnet_ids = module.vpc.private_subnets
+# Usar LabRole existente de AWS Academy
+data "aws_iam_role" "lab_role" {
+  name = "LabRole"
+}
 
-  dynamodb_table_arn = module.dynamodb_table.table_arn
-  sns_topic_arn      = aws_sns_topic.notifications.arn
+# prepare lambda deployment packages
+data "archive_file" "lambda_zip" {
+  for_each    = var.lambda_handlers
+  type        = "zip"
+  source_dir  = "../../deprecated_modules/backend/lambda_src/${each.value}" //TODO change path to use S3 bucket code packages
+  output_path = "../../deprecated_modules/backend/.terraform/${each.value}.zip" 
+}
 
-  images_bucket_name = module.images_bucket.bucket_id
-  images_bucket_arn  = module.images_bucket.bucket_arn
+resource "aws_lambda_function" "lambdas" {
+  # meta-argument 'for_each' to create one lambda per handler
+  for_each      = var.lambda_handlers
+  function_name = "${local.base_name}-${each.value}"
+  role          = data.aws_iam_role.lab_role.arn
+  handler       = "app.handler" # TODO: app.py and handler functions as entry point (modificaciones en backend)
+  runtime       = "python3.12"
 
-  lambda_handlers_map = var.lambda_handlers
+  filename         = data.archive_file.lambda_zip[each.key].output_path
+  source_code_hash = data.archive_file.lambda_zip[each.key].output_base64sha256
+
+  # setup lambdas in VPC
+  vpc_config {
+    subnet_ids         = module.vpc.private_subnets
+    # setup security group
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = element(split("/", aws_dynamodb_table.main.arn), length(split("/", aws_dynamodb_table.main.arn)) - 1)
+      SNS_TOPIC_ARN  = aws_sns_topic.notifications.arn
+      IMAGES_BUCKET  = module.images_bucket.bucket_id
+    }
+  }
 
   tags = local.common_tags
 }
+
+# Lambda permissions para que API Gateway pueda invocar todas las lambdas
+resource "aws_lambda_permission" "api_gateway_invoke" {
+  for_each      = var.lambda_handlers
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambdas[each.key].function_name
+  principal     = "apigateway.amazonaws.com"
+  
+  # Permite que este API Gateway invoque desde cualquier endpoint
+  source_arn = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+}
+
+# lambda security group
+resource "aws_security_group" "lambda_sg" {
+  name        = "${local.base_name}-lambda-sg"
+  description = "SG para Lambdas en VPC"
+  vpc_id      = module.vpc.vpc_id
+
+  # TODO: mover esto al modulo network y pasarlo como variable a backend?
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.common_tags
+}
+
+# API gw
+resource "aws_api_gateway_rest_api" "api" {
+  name        = "${local.base_name}-api"
+  description = "API para el TP de Cloud"
+  tags        = local.common_tags
+}
+
+# cognito authorizer for API gw
+resource "aws_api_gateway_authorizer" "cognito" {
+  name                   = "Cognito-Authorizer"
+  type                   = "COGNITO_USER_POOLS"
+  rest_api_id            = aws_api_gateway_rest_api.api.id
+  provider_arns          = [aws_cognito_user_pool.pool.arn]
+}
+
+# TODO: definir todo lo que va en cada lambda (endpoints, recursos,etc)
+resource "aws_api_gateway_resource" "packages" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  path_part   = "packages"
+}
+
+# POST /packages
+resource "aws_api_gateway_method" "post_packages" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS" # ¡Protegido!
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "post_packages_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages.id
+  http_method = aws_api_gateway_method.post_packages.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY" # proxies to lambda
+  uri                     = aws_lambda_function.lambdas["packages"].invoke_arn
+}
+
+resource "aws_api_gateway_deployment" "api_deploy" {
+  # meta-argument 'depends_on' to ensure all integrations are created before deployment
+  depends_on = [
+    aws_api_gateway_integration.post_packages_lambda,
+  ]
+
+  rest_api_id = aws_api_gateway_rest_api.api.id
+}
+
