@@ -96,11 +96,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
 
 # S3 Bucket Notification Configuration
 resource "aws_s3_bucket_notification" "this" {
-  count  = length(var.notifications) > 0 ? 1 : 0
+  count  = var.notifications != null && length(var.notifications) > 0 ? 1 : 0
   bucket = aws_s3_bucket.this.id
 
   dynamic "lambda_function" {
-    for_each = var.notifications.lambda_functions != null ? var.notifications.lambda_functions : []
+    for_each = var.notifications != null && var.notifications.lambda_functions != null ? var.notifications.lambda_functions : []
     content {
       lambda_function_arn = lambda_function.value.lambda_function_arn
       events              = lambda_function.value.events

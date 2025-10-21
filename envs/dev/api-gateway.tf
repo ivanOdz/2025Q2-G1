@@ -49,4 +49,19 @@ resource "aws_api_gateway_deployment" "api_deploy" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api.id
+  
+  # Forzar nuevo deployment cuando cambie la autorización
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_method.post_packages.authorization,
+      aws_api_gateway_integration.post_packages_lambda.uri,
+    ]))
+  }
+}
+
+# Stage para el API Gateway
+resource "aws_api_gateway_stage" "api_stage" {
+  deployment_id = aws_api_gateway_deployment.api_deploy.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  stage_name    = "dev"
 }
