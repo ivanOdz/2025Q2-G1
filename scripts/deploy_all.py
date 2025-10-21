@@ -65,7 +65,7 @@ def main():
                                               capture_output=True, text=True, check=True)
         frontend_bucket_name = frontend_bucket_result.stdout.strip()
         
-        api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_base_url"], 
+        api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_arn"], 
                                       capture_output=True, text=True, check=True)
         api_url = api_url_result.stdout.strip()
     except subprocess.CalledProcessError:
