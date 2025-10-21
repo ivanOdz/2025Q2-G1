@@ -85,9 +85,13 @@ module "frontend_bucket" {
     error_document = "index.html"
     routing_rules  = null
   }
+}
 
-  # Bucket policy for public read access
-  bucket_policy = jsonencode({
+# Bucket policy for frontend bucket public read access
+resource "aws_s3_bucket_policy" "frontend_bucket_policy" {
+  bucket = module.frontend_bucket.bucket_id
+  
+  policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
       {
@@ -96,7 +100,7 @@ module "frontend_bucket" {
         Principal = "*",
         Action    = "s3:GetObject",
         Resource  = [
-          format("%s/*", module.frontend_bucket.s3_bucket_arn) 
+          format("%s/*", module.frontend_bucket.bucket_arn) 
         ]
       },
     ],
@@ -104,56 +108,3 @@ module "frontend_bucket" {
 }
 
 
-# --- DynamoDB module ---
-module "dynamodb_table" {
-  source = "../../modules/dynamodb"
-
-  # meta argument 'depends_on' used outside module
-  depends_on = [module.vpc]
-
-  table_name = "${local.base_name}-table"
-  
-  # Same configuration as deprecated module
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "PK"
-  range_key    = "SK"
-  
-  # Attribute definitions (same as deprecated)
-  attributes = [
-    {
-      name = "PK"
-      type = "S"
-    },
-    {
-      name = "SK"
-      type = "S"
-    },
-    {
-      name = "GSI1PK"
-      type = "S"
-    },
-    {
-      name = "GSI1SK"
-      type = "S"
-    }
-  ]
-  
-  # Global Secondary Index (same as deprecated)
-  global_secondary_indexes = [
-    {
-      name            = "GSI1"
-      hash_key        = "GSI1PK"
-      range_key       = "GSI1SK"
-      projection_type = "ALL"
-      read_capacity   = null
-      write_capacity  = null
-    }
-  ]
-  
-  # Enhanced features (new capabilities)
-  encryption_enabled              = true
-  point_in_time_recovery_enabled = true
-  deletion_protection_enabled    = false  # Set to true for production
-  
-  tags = local.common_tags
-}

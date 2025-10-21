@@ -108,26 +108,6 @@ resource "aws_s3_bucket_notification" "this" {
       filter_suffix       = lambda_function.value.filter_suffix
     }
   }
-
-  dynamic "sqs" {
-    for_each = var.notifications.sqs != null ? var.notifications.sqs : []
-    content {
-      queue_arn     = sqs.value.queue_arn
-      events        = sqs.value.events
-      filter_prefix = sqs.value.filter_prefix
-      filter_suffix = sqs.value.filter_suffix
-    }
-  }
-
-  dynamic "sns" {
-    for_each = var.notifications.sns != null ? var.notifications.sns : []
-    content {
-      topic_arn     = sns.value.topic_arn
-      events        = sns.value.events
-      filter_prefix = sns.value.filter_prefix
-      filter_suffix = sns.value.filter_suffix
-    }
-  }
 }
 
 # S3 Bucket CORS Configuration

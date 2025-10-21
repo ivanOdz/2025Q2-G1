@@ -66,12 +66,8 @@ resource "aws_dynamodb_table" "main" {
   }
 
   # Stream configuration
-  dynamic "stream" {
-    for_each = var.stream_enabled ? [1] : []
-    content {
-      stream_view_type = var.stream_view_type
-    }
-  }
+  stream_enabled   = var.stream_enabled
+  stream_view_type = var.stream_enabled ? var.stream_view_type : null
 
   # Deletion protection
   deletion_protection_enabled = var.deletion_protection_enabled

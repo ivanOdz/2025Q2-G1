@@ -31,12 +31,12 @@ output "bucket_region" {
 
 output "bucket_website_endpoint" {
   description = "The website endpoint, if the bucket is configured with a website"
-  value       = aws_s3_bucket.this.website_endpoint
+  value       = length(aws_s3_bucket_website_configuration.this) > 0 ? aws_s3_bucket_website_configuration.this[0].website_endpoint : null
 }
 
 output "bucket_website_domain" {
   description = "The domain of the website endpoint, if the bucket is configured with a website"
-  value       = aws_s3_bucket.this.website_domain
+  value       = length(aws_s3_bucket_website_configuration.this) > 0 ? aws_s3_bucket_website_configuration.this[0].website_domain : null
 }
 
 # Versioning Information
@@ -48,12 +48,18 @@ output "versioning_status" {
 # Encryption Information
 output "encryption_algorithm" {
   description = "The server-side encryption algorithm used"
-  value       = aws_s3_bucket_server_side_encryption_configuration.this.rule[0].apply_server_side_encryption_by_default[0].sse_algorithm
+  value       = length(aws_s3_bucket_server_side_encryption_configuration.this.rule) > 0 ? [
+    for rule in aws_s3_bucket_server_side_encryption_configuration.this.rule : 
+    rule.apply_server_side_encryption_by_default[0].sse_algorithm
+  ][0] : null
 }
 
 output "kms_key_id" {
   description = "The KMS key ID used for encryption"
-  value       = aws_s3_bucket_server_side_encryption_configuration.this.rule[0].apply_server_side_encryption_by_default[0].kms_master_key_id
+  value       = length(aws_s3_bucket_server_side_encryption_configuration.this.rule) > 0 ? [
+    for rule in aws_s3_bucket_server_side_encryption_configuration.this.rule : 
+    rule.apply_server_side_encryption_by_default[0].kms_master_key_id
+  ][0] : null
 }
 
 # Public Access Block Information

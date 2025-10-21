@@ -78,7 +78,7 @@ output "kms_alias_name" {
 # Useful for Lambda functions and other AWS services
 output "table_endpoint" {
   description = "DynamoDB table endpoint URL"
-  value       = "https://dynamodb.${data.aws_region.current.name}.amazonaws.com"
+  value       = "https://dynamodb.${data.aws_region.current.id}.amazonaws.com"
 }
 
 # Data source for current region (needed for endpoint)

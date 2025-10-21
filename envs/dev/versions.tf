@@ -1,1 +1,0 @@
-# Versioness de terraform y providers
