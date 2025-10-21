@@ -1,1 +1,8 @@
 .terraform
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+lambdas/packaged
+deprecated_modules
+dev.tfvars
+tfplan
