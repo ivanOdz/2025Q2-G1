@@ -65,15 +65,58 @@ resource "aws_security_group" "vpc_endpoints" {
   tags = local.common_tags
 }
 
-# --- bd module ---
-module "database" {
-  source = "../../deprecated_modules/database"
+# --- DynamoDB module ---
+module "dynamodb_table" {
+  source = "../../modules/dynamodb"
 
   # meta argument 'depends_on' used outside module
   depends_on = [module.vpc]
 
   table_name = "${local.base_name}-table"
-  tags       = local.common_tags
+  
+  # Same configuration as deprecated module
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+  range_key    = "SK"
+  
+  # Attribute definitions (same as deprecated)
+  attributes = [
+    {
+      name = "PK"
+      type = "S"
+    },
+    {
+      name = "SK"
+      type = "S"
+    },
+    {
+      name = "GSI1PK"
+      type = "S"
+    },
+    {
+      name = "GSI1SK"
+      type = "S"
+    }
+  ]
+  
+  # Global Secondary Index (same as deprecated)
+  global_secondary_indexes = [
+    {
+      name            = "GSI1"
+      hash_key        = "GSI1PK"
+      range_key       = "GSI1SK"
+      projection_type = "ALL"
+      read_capacity   = null
+      write_capacity  = null
+    }
+  ]
+  
+  # Enhanced features (new capabilities)
+  encryption_enabled              = true
+  point_in_time_recovery_enabled = true
+  deletion_protection_enabled    = false  # Set to true for production
+  
+  tags = local.common_tags
 }
 
 # --- events resources ---
@@ -131,13 +174,13 @@ module "storage" {
 module "backend" {
   source = "../../deprecated_modules/backend"
 
-  depends_on = [module.vpc, module.database]
+  depends_on = [module.vpc, module.dynamodb_table]
 
   project_name      = local.base_name
   vpc_id            = module.vpc.vpc_id
   lambda_subnet_ids = module.vpc.private_subnets
 
-  dynamodb_table_arn = module.database.table_arn
+  dynamodb_table_arn = module.dynamodb_table.table_arn
   sns_topic_arn      = aws_sns_topic.notifications.arn
 
   images_bucket_name = module.storage.images_bucket_name
