@@ -4,7 +4,7 @@
 module "images_bucket" {
   source = "../../modules/s3-bucket"
   
-  bucket_name = "fast-track-delivery-dev-images-storage-2025-ddijv-polenta"
+  bucket_name = var.images_bucket
   tags        = local.common_tags
   
   # Public access block configuration (secure defaults)
@@ -70,7 +70,7 @@ module "images_bucket" {
 module "frontend_bucket" {
   source = "../../modules/s3-bucket"
   
-  bucket_name = "fast-track-delivery-dev-frontend-bucket-2025-ddijv-polenta"
+  bucket_name = var.frontend_bucket
   tags        = local.common_tags
   
   # Public access block configuration (disabled for static website)

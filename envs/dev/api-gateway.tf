@@ -19,6 +19,12 @@ resource "aws_api_gateway_authorizer" "cognito" {
 # TODO: definir todo lo que va en cada lambda (endpoints, recursos,etc)
 resource "aws_api_gateway_resource" "packages" {
   rest_api_id = aws_api_gateway_rest_api.api.id
+  
+  lifecycle {
+    # Helps avoid AWS timing issues when replacing deployments that still
+    # have active stages pointing to the previous one.
+    create_before_destroy = true
+  }
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
   path_part   = "packages"
 }
@@ -39,7 +45,7 @@ resource "aws_api_gateway_integration" "post_packages_lambda" {
 
   integration_http_method = "POST"
   type                    = "AWS_PROXY" # proxies to lambda
-  uri                     = aws_lambda_function.lambdas["packages"].invoke_arn
+  uri                     = module.lambdas["packages"].function_invoke_arn
 }
 
 resource "aws_api_gateway_deployment" "api_deploy" {

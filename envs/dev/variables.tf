@@ -37,6 +37,19 @@ variable "lambda_handlers" {
     notifications = "notifications_handler"
   }
 }
+variable "lambda_zip_path" {
+  description = "Path to ZIPs pre-packaged"
+  type        = string
+}
+
+variable "images_bucket" {
+  description = "S3 bucket (with versioning) where Images are published."
+  type        = string
+}
+variable "frontend_bucket" {
+  description = "S3 bucket (with versioning) where frontend build are published."
+  type        = string
+}
 
 # VPC Configuration
 variable "vpc_cidr" {

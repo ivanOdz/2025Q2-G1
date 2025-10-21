@@ -62,12 +62,12 @@ output "cognito_user_pool_client_id" {
 # Lambda outputs
 output "lambda_function_names" {
   description = "Map of Lambda function names"
-  value       = { for k, v in aws_lambda_function.lambdas : k => v.function_name }
+  value       = { for k, m in module.lambdas : k => m.function_name }
 }
 
 output "lambda_function_arns" {
   description = "Map of Lambda function ARNs"
-  value       = { for k, v in aws_lambda_function.lambdas : k => v.arn }
+  value       = { for k, m in module.lambdas : k => m.function_arn }
 }
 
 # API Gateway outputs

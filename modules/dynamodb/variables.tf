@@ -56,16 +56,8 @@ variable "global_secondary_indexes" {
     read_capacity   = optional(number)
     write_capacity  = optional(number)
   }))
-  default = [
-    {
-      name            = "GSI1"
-      hash_key        = "GSI1PK"
-      range_key       = "GSI1SK"
-      projection_type = "ALL"
-      read_capacity   = null
-      write_capacity  = null
-    }
-  ]
+  # Safe default: no GSIs to avoid referencing undefined attributes
+  default = []
 }
 
 variable "local_secondary_indexes" {
