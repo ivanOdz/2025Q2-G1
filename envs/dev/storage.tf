@@ -4,7 +4,7 @@
 module "images_bucket" {
   source = "../../modules/s3-bucket"
   
-  bucket_name = "fast-track-delivery-dev-images-storage-2025-ddijv-locro"
+  bucket_name = "fast-track-delivery-dev-images-storage-2025-ddijv-polenta"
   tags        = local.common_tags
   
   # Public access block configuration (secure defaults)
@@ -70,7 +70,7 @@ module "images_bucket" {
 module "frontend_bucket" {
   source = "../../modules/s3-bucket"
   
-  bucket_name = "fast-track-delivery-dev-frontend-bucket-2025-ddijv-locro"
+  bucket_name = "fast-track-delivery-dev-frontend-bucket-2025-ddijv-polenta"
   tags        = local.common_tags
   
   # Public access block configuration (disabled for static website)
@@ -90,6 +90,9 @@ module "frontend_bucket" {
 # Bucket policy for frontend bucket public read access
 resource "aws_s3_bucket_policy" "frontend_bucket_policy" {
   bucket = module.frontend_bucket.bucket_id
+  
+  # Ensure public access block is configured before applying policy
+  depends_on = [module.frontend_bucket]
   
   policy = jsonencode({
     Version = "2012-10-17",
