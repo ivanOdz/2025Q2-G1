@@ -16,17 +16,65 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 
-# --- network module ---
-module "network" {
-  source = "../../deprecated_modules/network" # local
+# --- VPC module ---
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.5.3"
 
-  project_name = local.base_name
-  vpc_cidr     = "10.0.0.0/16"
-  aws_region   = var.aws_region
+  name = local.base_name
+  cidr = "10.0.0.0/16"
+
+  azs             = ["${var.aws_region}a", "${var.aws_region}b"]
+  private_subnets = ["${cidrsubnet("10.0.0.0/16", 8, 0)}", "${cidrsubnet("10.0.0.0/16", 8, 1)}"]
+  public_subnets  = ["${cidrsubnet("10.0.0.0/16", 8, 100)}", "${cidrsubnet("10.0.0.0/16", 8, 101)}"]
+
+  enable_nat_gateway = true # allow lambdas in private subnets to access internet to download packages or call external APIs
+  single_nat_gateway = true
+
+  # VPC Endpoints
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 
   tags = merge(local.common_tags, {
     Name = "${local.base_name}-vpc"
   })
+}
+
+# VPC Endpoint para DynamoDB
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id       = module.vpc.vpc_id
+  service_name = "com.amazonaws.${var.aws_region}.dynamodb"
+  route_table_ids = concat(
+    module.vpc.private_route_table_ids,
+    module.vpc.public_route_table_ids
+  )
+  tags = merge(local.common_tags, { Name = "${local.base_name}-dynamodb-endpoint" })
+}
+
+# VPC Endpoint para SQS
+resource "aws_vpc_endpoint" "sqs" {
+  vpc_id            = module.vpc.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.sqs"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = module.vpc.private_subnets
+  security_group_ids = [aws_security_group.vpc_endpoints.id]
+  tags = merge(local.common_tags, { Name = "${local.base_name}-sqs-endpoint" })
+}
+
+# Security Group para VPC Endpoints
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${local.base_name}-vpc-endpoints-sg"
+  description = "Security group for VPC endpoints"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  tags = local.common_tags
 }
 
 # --- bd module ---
@@ -34,7 +82,7 @@ module "database" {
   source = "../../deprecated_modules/database"
 
   # meta argument 'depends_on' used outside module
-  depends_on = [module.network]
+  depends_on = [module.vpc]
 
   table_name = "${local.base_name}-table"
   tags       = local.common_tags
@@ -95,11 +143,11 @@ module "storage" {
 module "backend" {
   source = "../../deprecated_modules/backend"
 
-  depends_on = [module.network, module.database]
+  depends_on = [module.vpc, module.database]
 
   project_name      = local.base_name
-  vpc_id            = module.network.vpc_id
-  lambda_subnet_ids = module.network.private_subnet_ids
+  vpc_id            = module.vpc.vpc_id
+  lambda_subnet_ids = module.vpc.private_subnets
 
   dynamodb_table_arn = module.database.table_arn
   sns_topic_arn      = aws_sns_topic.notifications.arn
