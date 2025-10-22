@@ -15,6 +15,7 @@ FUNCTIONS = [
     ("depots_handler", "depots_handler.py"),
     ("images_handler", "images_handler.py"),
     ("notifications_handler", "notifications_handler.py"),
+    ("user_handler","user_handler.py"),
 ]
 
 # -----------------------------

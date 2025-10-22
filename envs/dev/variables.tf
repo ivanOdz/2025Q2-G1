@@ -35,6 +35,7 @@ variable "lambda_handlers" {
     depots        = "depots_handler"
     images        = "images_handler"
     notifications = "notifications_handler"
+    users         = "user_handler"
   }
 }
 variable "lambda_zip_path" {

@@ -128,6 +128,17 @@ resource "aws_api_gateway_resource" "depots_id" {
   path_part   = "{id}"
 }
 
+# Users: change-role resource
+resource "aws_api_gateway_resource" "change_role" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+  parent_id = aws_api_gateway_rest_api.api.root_resource_id
+  path_part = "change-role"
+}
+
 # POST /packages
 resource "aws_api_gateway_method" "post_packages" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
@@ -379,6 +390,25 @@ resource "aws_api_gateway_integration" "get_depots_id_lambda" {
   uri                     = module.lambdas["depots"].function_invoke_arn
 }
 
+# POST /change-role
+resource "aws_api_gateway_method" "post_change_role" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.change_role.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "post_change_role_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.change_role.id
+  http_method = aws_api_gateway_method.post_change_role.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambdas["users"].function_invoke_arn
+}
+
 resource "aws_api_gateway_deployment" "api_deploy" {
   # meta-argument 'depends_on' to ensure all integrations are created before deployment
   depends_on = [
@@ -395,6 +425,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.get_addresses_id_lambda,
     aws_api_gateway_integration.get_depots_lambda,
     aws_api_gateway_integration.get_depots_id_lambda,
+    aws_api_gateway_integration.post_change_role_lambda,
     aws_api_gateway_integration.options_packages_mock,
     aws_api_gateway_integration.options_packages_code_mock,
     aws_api_gateway_integration.options_addresses_mock,
@@ -404,7 +435,8 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.options_tracks_mock,
     aws_api_gateway_integration.options_packages_code_tracks_mock,
     aws_api_gateway_integration.options_packages_code_tracks_latest_mock,
-    aws_api_gateway_integration.options_packages_code_images_mock
+    aws_api_gateway_integration.options_packages_code_images_mock,
+    aws_api_gateway_integration.options_change_role_mock
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api.id
@@ -426,6 +458,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_integration.get_addresses_id_lambda.uri,
       aws_api_gateway_integration.get_depots_lambda.uri,
       aws_api_gateway_integration.get_depots_id_lambda.uri,
+      aws_api_gateway_integration.post_change_role_lambda.uri,
       aws_api_gateway_method.options_packages.http_method,
       aws_api_gateway_method.options_packages_code.http_method,
       aws_api_gateway_method.options_addresses.http_method,
@@ -445,7 +478,8 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_integration.options_tracks_mock.type,
       aws_api_gateway_integration.options_packages_code_tracks_mock.type,
       aws_api_gateway_integration.options_packages_code_tracks_latest_mock.type,
-      aws_api_gateway_integration.options_packages_code_images_mock.type
+      aws_api_gateway_integration.options_packages_code_images_mock.type,
+      aws_api_gateway_integration.options_change_role_mock.type
     ]))
   }
 }
@@ -510,6 +544,57 @@ resource "aws_api_gateway_integration_response" "options_packages_200_response" 
   }
 
   depends_on = [aws_api_gateway_integration.options_packages_mock]
+}
+
+# OPTIONS /change-role (CORS)
+resource "aws_api_gateway_method" "options_change_role" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.change_role.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_change_role_mock" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.change_role.id
+  http_method = aws_api_gateway_method.options_change_role.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_change_role_200" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.change_role.id
+  http_method = aws_api_gateway_method.options_change_role.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_change_role_200_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.change_role.id
+  http_method = aws_api_gateway_method.options_change_role.http_method
+  status_code = aws_api_gateway_method_response.options_change_role_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'",
+    "method.response.header.Access-Control-Allow-Methods" = "'POST, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+  }
+
+  depends_on = [aws_api_gateway_integration.options_change_role_mock]
 }
 
 # OPTIONS /packages/{code}

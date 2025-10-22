@@ -62,25 +62,16 @@ module "dynamodb_users" {
 
   table_name   = "package-tracking-users"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "user_id"
+  hash_key     = "email"
   range_key    = null
 
   attributes = [
-    { name = "user_id", type = "S" },
-    { name = "email",   type = "S" }
-  ]
-
-  global_secondary_indexes = [
-    {
-      name            = "email-index"
-      hash_key        = "email"
-      projection_type = "ALL"
-    }
+    { name = "email", type = "S" }
   ]
 
   # Avoid creating extra KMS resources or PITR to match original
-  encryption_enabled               = false
-  point_in_time_recovery_enabled   = false
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
 
   tags = merge(local.common_tags, { Name = "package-tracking-users" })
 }
