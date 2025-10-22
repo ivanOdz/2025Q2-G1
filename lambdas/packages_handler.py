@@ -38,26 +38,39 @@ def lambda_handler(event, context):
     """
     
     try:
-        # Extract user information from Cognito JWT
-        user_id = event['requestContext']['authorizer']['claims']['sub']
-        user_email = event['requestContext']['authorizer']['claims']['email']
-        user_role = event['requestContext']['authorizer']['claims'].get('custom:role', 'user')
-        
-        # Parse HTTP method and path
+        user_id = None
+        user_email = None
+        user_role = 'anon'
+
         http_method = event['httpMethod']
         path_parameters = event.get('pathParameters', {})
+
+        if event.get('requestContext', {}).get('authorizer'):
+            claims = event['requestContext']['authorizer']['claims']
+            user_id = claims.get('sub')
+            user_email = claims.get('email')
+            user_role = claims.get('custom:role', 'user')
+
         query_parameters = event.get('queryStringParameters', {})
         
         # Route to appropriate handler
         if http_method == 'GET' and not path_parameters:
+            if user_role == 'anon':
+                return cors_response(401, {'error': 'Authentication required'})
             return get_packages_list(query_parameters, user_id, user_role)
+
         elif http_method == 'POST' and not path_parameters:
+            if user_role == 'anon':
+                return cors_response(401, {'error': 'Authentication required'})
             return create_package(json.loads(event['body']), user_id, user_email)
+
         elif http_method == 'GET' and path_parameters.get('code'):
+            # public endpoint
             return get_package_by_code(path_parameters['code'], user_id, user_role)
+
         else:
             return cors_response(405, {'error': 'Method not allowed'})
-            
+
     except Exception as e:
         print(f"Error in packages_handler: {str(e)}")
         return cors_response(500, {'error': 'Internal server error'})
@@ -159,11 +172,13 @@ def get_package_by_code(package_code, user_id, user_role):
             return cors_response(404, {'error': 'Package not found'})
         
         package = response['Items'][0]
-        
-        # Check if user has access to this package
-        if user_role != 'admin' and package['sender_id'] != user_id:
-            return cors_response(403, {'error': 'Access denied'})
-        
+
+        # check access permissions if user is not 'anon'
+        if user_role != 'anon':
+            # Check if user has access to this package
+            if user_role != 'admin' and package['sender_id'] != user_id:
+                return cors_response(403, {'error': 'Access denied'})
+
         # Convert Decimal to float for response
         if package.get('weight'):
             package['weight'] = float(package['weight'])
