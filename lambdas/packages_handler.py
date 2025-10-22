@@ -16,6 +16,17 @@ tracks_table = dynamodb.Table('package-tracking-tracks')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 users_table = dynamodb.Table('package-tracking-users')
 
+def convert_decimals_to_float(obj):
+    """Convert Decimal objects to float for JSON serialization"""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_decimals_to_float(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals_to_float(item) for item in obj]
+    else:
+        return obj
+
 def cors_response(status_code, body=None):
     """
     Create a CORS-enabled response
@@ -27,12 +38,13 @@ def cors_response(status_code, body=None):
             'Content-Type': 'application/json'
         }
     }
-    
-    if body is not None:
-        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
-    
-    return response
 
+    if body is not None:
+        body = convert_decimals_to_float(body)
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+
+    return response
+    
 def lambda_handler(event, context):
     """
     Handle package-related API requests

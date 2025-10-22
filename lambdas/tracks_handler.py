@@ -14,6 +14,18 @@ tracks_table = dynamodb.Table('package-tracking-tracks')
 packages_table = dynamodb.Table('package-tracking-packages')
 depots_table = dynamodb.Table('package-tracking-depots')
 
+def convert_decimals_to_float(obj):
+    """Convert Decimal objects to float for JSON serialization"""
+    from decimal import Decimal
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_decimals_to_float(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals_to_float(item) for item in obj]
+    else:
+        return obj
+
 def cors_response(status_code, body=None):
     """
     Create a CORS-enabled response
@@ -25,10 +37,11 @@ def cors_response(status_code, body=None):
             'Content-Type': 'application/json'
         }
     }
-    
+
     if body is not None:
+        body = convert_decimals_to_float(body)
         response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
-    
+
     return response
 
 def lambda_handler(event, context):
@@ -38,10 +51,16 @@ def lambda_handler(event, context):
     """
     
     try:
-        # Extract user information from Cognito JWT
-        user_id = event['requestContext']['authorizer']['claims']['sub']
-        user_email = event['requestContext']['authorizer']['claims']['email']
-        user_role = event['requestContext']['authorizer']['claims'].get('custom:role', 'user')
+        # Extract user information from Cognito JWT (if available)
+        user_id = None
+        user_email = None
+        user_role = 'anon'
+        
+        if event.get('requestContext', {}).get('authorizer'):
+            claims = event['requestContext']['authorizer']['claims']
+            user_id = claims.get('sub')
+            user_email = claims.get('email')
+            user_role = claims.get('custom:role', 'user')
         
         # Parse HTTP method and path
         http_method = event['httpMethod']
@@ -218,7 +237,8 @@ def get_package_by_code(package_code, user_id, user_role):
         package = response['Items'][0]
         
         # Check if user has access to this package
-        if user_role != 'admin' and package['sender_id'] != user_id:
+        # For public endpoints (like track lookup), allow anonymous access
+        if user_role != 'anon' and user_role != 'admin' and package['sender_id'] != user_id:
             return cors_response(403, {'error': 'Access denied'})
         
         return cors_response(200, package)
