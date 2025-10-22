@@ -371,7 +371,10 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.options_addresses_id_mock,
     aws_api_gateway_integration.options_depots_mock,
     aws_api_gateway_integration.options_depots_id_mock,
-    aws_api_gateway_integration.options_tracks_mock
+    aws_api_gateway_integration.options_tracks_mock,
+    aws_api_gateway_integration.options_packages_code_tracks_mock,
+    aws_api_gateway_integration.options_packages_code_tracks_latest_mock,
+    aws_api_gateway_integration.options_packages_code_images_mock
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api.id
@@ -399,13 +402,19 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_method.options_depots.http_method,
       aws_api_gateway_method.options_depots_id.http_method,
       aws_api_gateway_method.options_tracks.http_method,
+      aws_api_gateway_method.options_packages_code_tracks.http_method,
+      aws_api_gateway_method.options_packages_code_tracks_latest.http_method,
+      aws_api_gateway_method.options_packages_code_images.http_method,
       aws_api_gateway_integration.options_packages_mock.type,
       aws_api_gateway_integration.options_packages_code_mock.type,
       aws_api_gateway_integration.options_addresses_mock.type,
       aws_api_gateway_integration.options_addresses_id_mock.type,
       aws_api_gateway_integration.options_depots_mock.type,
       aws_api_gateway_integration.options_depots_id_mock.type,
-      aws_api_gateway_integration.options_tracks_mock.type
+      aws_api_gateway_integration.options_tracks_mock.type,
+      aws_api_gateway_integration.options_packages_code_tracks_mock.type,
+      aws_api_gateway_integration.options_packages_code_tracks_latest_mock.type,
+      aws_api_gateway_integration.options_packages_code_images_mock.type
     ]))
   }
 }
@@ -777,6 +786,159 @@ resource "aws_api_gateway_integration_response" "options_tracks_200_response" {
   }
 
   depends_on = [aws_api_gateway_integration.options_tracks_mock]
+}
+
+# OPTIONS /packages/{code}/tracks
+resource "aws_api_gateway_method" "options_packages_code_tracks" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_tracks.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_packages_code_tracks_mock" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_packages_code_tracks_200" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_packages_code_tracks_200_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks.http_method
+  status_code = aws_api_gateway_method_response.options_packages_code_tracks_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET, POST, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+  }
+
+  depends_on = [aws_api_gateway_integration.options_packages_code_tracks_mock]
+}
+
+# OPTIONS /packages/{code}/tracks/latest
+resource "aws_api_gateway_method" "options_packages_code_tracks_latest" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_tracks_latest.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_packages_code_tracks_latest_mock" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_latest.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks_latest.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_packages_code_tracks_latest_200" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_latest.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks_latest.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_packages_code_tracks_latest_200_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_latest.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks_latest.http_method
+  status_code = aws_api_gateway_method_response.options_packages_code_tracks_latest_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+  }
+
+  depends_on = [aws_api_gateway_integration.options_packages_code_tracks_latest_mock]
+}
+
+# OPTIONS /packages/{code}/images
+resource "aws_api_gateway_method" "options_packages_code_images" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_images.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_packages_code_images_mock" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_images.id
+  http_method = aws_api_gateway_method.options_packages_code_images.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_packages_code_images_200" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_images.id
+  http_method = aws_api_gateway_method.options_packages_code_images.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_packages_code_images_200_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_images.id
+  http_method = aws_api_gateway_method.options_packages_code_images.http_method
+  status_code = aws_api_gateway_method_response.options_packages_code_images_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'",
+    "method.response.header.Access-Control-Allow-Methods" = "'POST, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+  }
+
+  depends_on = [aws_api_gateway_integration.options_packages_code_images_mock]
 }
 
 
