@@ -7,7 +7,7 @@ from zipfile import ZipFile
 # -----------------------------
 # CONFIG
 # -----------------------------
-LAMBDA_DIR = "lambdas"
+LAMBDA_DIR = "packaged"
 FUNCTIONS = [
     ("packages_handler", "packages_handler.py"),
     ("tracks_handler", "tracks_handler.py"),
