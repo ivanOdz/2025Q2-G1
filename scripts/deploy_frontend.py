@@ -10,20 +10,30 @@ from pathlib import Path
 GIT_REPO_URL = "https://github.com/julietaTechenski/CLOUD-TP-frontend"
 FRONTEND_DIR = "CLOUD-TP-frontend"
 
+def handle_remove_read_only(func, path, exc):
+    # Verifica si la función es de eliminación (os.rmdir o os.remove) y si el archivo/directorio es de solo lectura.
+    if func in (os.rmdir, os.remove) and not os.access(path, os.W_OK):
+        os.chmod(path, stat.S_IWUSR) # Cambiar permisos a escritura para el usuario
+        try:
+            func(path) # Reintentar la función de eliminación
+        except Exception:
+            # Si el reintento falla, que el código llamador lo maneje.
+            raise
+    else:
+        raise # Volver a lanzar el error si es otro tipo de problema
+
 def safe_remove_directory(dir_path):
-    """Elimina un directorio de manera segura en Windows"""
+    """Elimina un directorio de manera segura, usando un controlador de errores para solucionar problemas de permisos en Windows."""
     if not os.path.exists(dir_path):
         return True
     
     try:
-        shutil.rmtree(dir_path)
+        # Usar el controlador de errores para gestionar archivos de solo lectura
+        shutil.rmtree(dir_path, onerror=handle_remove_read_only)
         return True
-    except PermissionError:
-        print(f"Advertencia: No se pudo eliminar {dir_path} debido a permisos de Windows.")
-        print("Esto es normal cuando Git mantiene archivos bloqueados.")
-        return False
     except Exception as e:
-        print(f"Advertencia: Error al eliminar {dir_path}: {e}")
+        print(f"Error CRÍTICO al eliminar {dir_path}: {e}")
+        # Si falla incluso con el manejador de errores, salimos con una advertencia severa.
         return False
 
 def main():
@@ -121,11 +131,10 @@ def main():
 
     print("-> 5. Limpieza de archivos locales...")
     
-    # Volver al directorio original
     os.chdir(original_dir)
     
-    # Eliminar el directorio clonado con manejo de errores de Windows
-    safe_remove_directory(FRONTEND_DIR)
+    if not safe_remove_directory(FRONTEND_DIR):
+        print(f"ERROR: No se pudo eliminar completamente el directorio clonado: {FRONTEND_DIR}")
 
     if sync_status == 0:
         print(f"Despliegue de Frontend en S3 completado en s3://{frontend_bucket_name}")
