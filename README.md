@@ -50,6 +50,8 @@ python scripts/deploy_all.py <dev|prod>
 
 For macOS / Linux:
 ```sh
+python3 -m venv venv
+source venv/bin/activate
 sh ./scripts/main_deploy.sh <dev|prod>
 ```
 
