@@ -21,7 +21,7 @@ def cors_response(status_code, body=None):
     }
     
     if body is not None:
-        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+        response['body'] = json.dumps(body)
     
     return response
 

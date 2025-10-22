@@ -40,7 +40,7 @@ def cors_response(status_code, body=None):
 
     if body is not None:
         body = convert_decimals_to_float(body)
-        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+        response['body'] = json.dumps(body)
 
     return response
 
@@ -135,11 +135,7 @@ def get_latest_track(package_code, user_id, user_role):
         tracks = response['Items']
         
         if not tracks:
-            return {
-                'statusCode': 404,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'No tracks found for this package'})
-            }
+            return cors_response(404, {'error': 'No tracks found for this package'})
         
         # Get the latest track
         latest_track = max(tracks, key=lambda x: x['timestamp'])
