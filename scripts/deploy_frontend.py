@@ -52,7 +52,7 @@ def main():
         region = parts[3]
         account = parts[4]
         api_id = parts[5].split("/")[0]  # Tomar solo la parte antes del /
-        api_url = f"http://{api_id}.execute-api.{region}.amazonaws.com"
+        api_url = f"https://{api_id}.execute-api.{region}.amazonaws.com"
         print(f"ARN convertido a URL: {api_arn} -> {api_url}")
     else:
         # Si ya es una URL, usarla tal como está

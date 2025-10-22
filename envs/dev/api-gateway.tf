@@ -365,7 +365,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.get_addresses_id_lambda,
     aws_api_gateway_integration.get_depots_lambda,
     aws_api_gateway_integration.get_depots_id_lambda,
-    aws_api_gateway_integration.options_packages_mock
+    aws_api_gateway_integration.options_packages_code_mock
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api.id
@@ -386,8 +386,8 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_integration.get_addresses_id_lambda.uri,
       aws_api_gateway_integration.get_depots_lambda.uri,
       aws_api_gateway_integration.get_depots_id_lambda.uri,
-      aws_api_gateway_method.options_packages.http_method,
-      aws_api_gateway_integration.options_packages_mock.type
+      aws_api_gateway_method.options_packages_code.http_method,
+      aws_api_gateway_integration.options_packages_code_mock.type
     ]))
   }
 }
@@ -396,49 +396,44 @@ resource "aws_api_gateway_deployment" "api_deploy" {
 resource "aws_api_gateway_stage" "api_stage" {
   deployment_id = aws_api_gateway_deployment.api_deploy.id
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  stage_name    = "dev"
+  stage_name    = "api"
 }
 
 # -----------------------------------------------------------------
-# CONFIGURACIÓN DE CORS (Cross-Origin Resource Sharing)
+# CORS /packages/{code}
 # -----------------------------------------------------------------
 
-# 1. Método OPTIONS para /packages (requerido para preflight)
-# Define el método OPTIONS y especifica que no requiere autorización.
-resource "aws_api_gateway_method" "options_packages" {
+# OPTIONS /packages/{code}
+resource "aws_api_gateway_method" "options_packages_code" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.packages.id
+  # CAMBIO: Apunta al recurso {code}
+  resource_id   = aws_api_gateway_resource.packages_code.id
   http_method   = "OPTIONS"
-  authorization = "NONE" # Las solicitudes OPTIONS de preflight nunca están autenticadas
+  authorization = "NONE"
 }
 
-# 2. Integración MOCK para el método OPTIONS
-# Le dice a API Gateway que responda directamente sin llamar a una Lambda.
-resource "aws_api_gateway_integration" "options_packages_mock" {
+resource "aws_api_gateway_integration" "options_packages_code_mock" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.packages.id
-  http_method = aws_api_gateway_method.options_packages.http_method
-  type        = "MOCK" # Tipo especial para que API GW responda por sí mismo
+  resource_id = aws_api_gateway_resource.packages_code.id
+  http_method = aws_api_gateway_method.options_packages_code.http_method
+  type        = "MOCK"
 
-  # Plantilla para forzar una respuesta 200 OK
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
 }
 
-# 3. Definición de la respuesta del método OPTIONS (Method Response)
-# Le dice a API Gateway qué headers *puede* incluir en la respuesta 200.
-resource "aws_api_gateway_method_response" "options_packages_200" {
+# OPTIONS response
+resource "aws_api_gateway_method_response" "options_packages_code_200" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.packages.id
-  http_method = aws_api_gateway_method.options_packages.http_method
+  resource_id = aws_api_gateway_resource.packages_code.id
+  http_method = aws_api_gateway_method.options_packages_code.http_method
   status_code = "200"
 
   response_models = {
     "application/json" = "Empty"
   }
-  
-  # Habilita los headers de CORS en la respuesta
+
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true,
     "method.response.header.Access-Control-Allow-Methods" = true,
@@ -446,25 +441,44 @@ resource "aws_api_gateway_method_response" "options_packages_200" {
   }
 }
 
-# 4. Respuesta de la integración MOCK (Integration Response)
-# Asigna los *valores reales* a los headers de CORS que el navegador recibirá.
-resource "aws_api_gateway_integration_response" "options_packages_200_response" {
+resource "aws_api_gateway_integration_response" "options_packages_code_200_response" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.packages.id
-  http_method = aws_api_gateway_method.options_packages.http_method
-  status_code = aws_api_gateway_method_response.options_packages_200.status_code
+  resource_id = aws_api_gateway_resource.packages_code.id
+  http_method = aws_api_gateway_method.options_packages_code.http_method
+  status_code = aws_api_gateway_method_response.options_packages_code_200.status_code
 
-  # Aquí defines los permisos que le das al navegador
   response_parameters = {
-    # ej: "'http://mi-bucket.s3-website-us-east-1.amazonaws.com'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'",
-
-    # Métodos permitidos para el endpoint /packages
-    "method.response.header.Access-Control-Allow-Methods" = "'POST, OPTIONS, GET'",
-
-    # Headers que permites en la solicitud. 'Authorization' es clave para Cognito
+    "method.response.header.Access-Control-Allow-Methods" = "'GET, OPTIONS'",
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
   }
 
-  depends_on = [aws_api_gateway_integration.options_packages_mock]
+  depends_on = [aws_api_gateway_integration.options_packages_code_mock]
+}
+
+
+# ERROR responses---
+
+# 4XX
+resource "aws_api_gateway_gateway_response" "cors_4xx" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  response_type = "DEFAULT_4XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+  }
+}
+
+# 5XX
+resource "aws_api_gateway_gateway_response" "cors_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  response_type = "DEFAULT_5XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+  }
 }
