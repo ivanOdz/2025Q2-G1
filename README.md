@@ -24,17 +24,19 @@ aws sts get-caller-identity
 
 The infrastructure is organized into logical modules:
 
-* `/modules/network`: Creates the VPC, Subnets, and VPC Endpoints for private connectivity.
-* `/modules/database`: Deploys the DynamoDB Single-Table for all our data.
-* `/modules/backend`: Deploys Cognito, API Gateway, all Lambda functions, and their IAM Roles.
-* `/modules/events`: Creates the SNS topic and SQS queue for asynchronous notifications.
-* `/modules/frontend`: Creates the S3 bucket configured for static website hosting (no CloudFront).
+* `/modules/dynamodb`: Defines the reusable module that creates DynamoDB databases according to the parameters set in the main configuration.
+* `/modules/lambda-api`: Creates Lambda functions for the API backend.
+* `/modules/s3-bucket`: Defines the reusable module that creates S3 buckets for static file storage according to the parameters set in the main configuration.
 
 ## How to Deploy
 
 Follow these steps to deploy the infrastructure to your AWS account.
 
 ### 1. Deploy infraestructre
+
+Create the backend that is assigned to each lambda function.
+
+Run `python .\script.py` to create the zip files for each lambda function.
 
 Download the AWS provider and any modules.
 
@@ -43,10 +45,11 @@ Download the AWS provider and any modules.
 terraform init
 
 # See what is about to be created
-terraform plan
+terraform plan -var-file="dev.tfvars" -out=tfplan 
 
 # Create AWS architecture
-terraform apply
+terraform apply -auto-approve tfplan
+
 ```
 Write `yes` when asked
 
