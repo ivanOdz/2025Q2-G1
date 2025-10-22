@@ -7,6 +7,9 @@ resource "aws_cognito_user_pool" "pool" {
   name = "${local.base_name}-user-pool"
   tags = local.common_tags
 
+  # Enable automatic email verification
+  auto_verified_attributes = ["email"]
+
   # Configurar solo email como método de verificación
   verification_message_template {
     default_email_option = "CONFIRM_WITH_CODE"
@@ -16,6 +19,11 @@ resource "aws_cognito_user_pool" "pool" {
 
   # Deshabilitar SMS completamente
   sms_verification_message = null
+
+  # Use Cognito's built-in email service (no SES required)
+  email_configuration {
+    email_sending_account = "COGNITO_DEFAULT"
+  }
 }
 
 resource "aws_cognito_user_pool_client" "client" {
