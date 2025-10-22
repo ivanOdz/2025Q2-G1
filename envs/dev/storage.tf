@@ -66,6 +66,43 @@ module "images_bucket" {
   ]
 }
 
+# S3 Event Notification for image uploads
+resource "aws_s3_bucket_notification" "images_bucket_notification" {
+  bucket = module.images_bucket.bucket_id
+
+  lambda_function {
+    lambda_function_arn = module.lambdas["images"].function_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "packages/"
+    filter_suffix       = ".jpg"
+  }
+
+  lambda_function {
+    lambda_function_arn = module.lambdas["images"].function_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "packages/"
+    filter_suffix       = ".png"
+  }
+
+  lambda_function {
+    lambda_function_arn = module.lambdas["images"].function_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "packages/"
+    filter_suffix       = ".gif"
+  }
+
+  depends_on = [module.lambdas]
+}
+
+# Lambda permission for S3 to invoke the function
+resource "aws_lambda_permission" "allow_s3_images_bucket" {
+  statement_id  = "AllowExecutionFromS3Bucket"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambdas["images"].function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = module.images_bucket.bucket_arn
+}
+
 # --- S3 Frontend Bucket (Static Website) ---
 module "frontend_bucket" {
   source = "../../modules/s3-bucket"

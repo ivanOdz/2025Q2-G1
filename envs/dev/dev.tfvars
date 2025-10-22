@@ -5,9 +5,9 @@ project_name = "fast-track-delivery"
 aws_region   = "us-east-1"
 
 # ¡El bucket debe ser globalmente único! OJO AL PIOJO CON ESTO pongo un //TODO
-code_bucket  = "fast-track-delivery-dev-code-2025-ddjvi-guiso-de-lentejas"
-images_bucket="fast-track-delivery-dev-images-2025-ddjvi-guiso-de-lentejas"
-frontend_bucket="fast-track-delivery-dev-frontend-2025-ddjvi-guiso-de-lentejas"
+code_bucket  = "fast-track-delivery-dev-code-2025-ddjvi-locro"
+images_bucket="fast-track-delivery-dev-images-2025-ddjvi-locro"
+frontend_bucket="fast-track-delivery-dev-frontend-2025-ddjvi-locro"
 lambda_zip_path = "../../lambdas/packaged"
 # Agrega (digamos) data governance (opcional despues le damos mas sentido)
 extra_tags = {

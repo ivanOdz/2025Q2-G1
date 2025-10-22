@@ -184,7 +184,16 @@ resource "aws_api_gateway_integration" "get_packages_code_lambda" {
   uri                     = module.lambdas["packages"].function_invoke_arn
 }
 
-# POST /packages/{code}/images
+# GET /packages/{code}/images (for requesting upload URL)
+resource "aws_api_gateway_method" "get_packages_code_images" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_images.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+# POST /packages/{code}/images (for uploading via multipart - keeping for now)
 resource "aws_api_gateway_method" "post_packages_code_images" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.packages_code_images.id
@@ -193,14 +202,34 @@ resource "aws_api_gateway_method" "post_packages_code_images" {
   authorizer_id = aws_api_gateway_authorizer.cognito.id
 }
 
+# Integration for GET /packages/{code}/images (pre-signed URL)
+resource "aws_api_gateway_integration" "get_packages_code_images_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_images.id
+  http_method = aws_api_gateway_method.get_packages_code_images.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY" # Use proxy for simple requests
+  uri                     = module.lambdas["images"].function_invoke_arn
+}
+
+# Integration for POST /packages/{code}/images (multipart upload - keeping for now)
 resource "aws_api_gateway_integration" "post_packages_code_images_lambda" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   resource_id = aws_api_gateway_resource.packages_code_images.id
   http_method = aws_api_gateway_method.post_packages_code_images.http_method
 
   integration_http_method = "POST"
-  type                    = "AWS_PROXY" # proxies to lambda
+  type                    = "AWS" # Use AWS integration instead of proxy
   uri                     = module.lambdas["images"].function_invoke_arn
+  
+  # Add mapping template for multipart/form-data
+  request_templates = {
+    "multipart/form-data" = jsonencode({
+      "body" = "$input.body"
+      "isBase64Encoded" = true
+    })
+  }
 }
 
 # GET /packages/{code}/tracks
@@ -356,6 +385,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.post_packages_lambda,
     aws_api_gateway_integration.get_packages_lambda,
     aws_api_gateway_integration.get_packages_code_lambda,
+    aws_api_gateway_integration.get_packages_code_images_lambda,
     aws_api_gateway_integration.post_packages_code_images_lambda,
     aws_api_gateway_integration.get_packages_code_tracks_lambda,
     aws_api_gateway_integration.get_packages_code_tracks_latest_lambda,
@@ -386,6 +416,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_integration.post_packages_lambda.uri,
       aws_api_gateway_integration.get_packages_lambda.uri,
       aws_api_gateway_integration.get_packages_code_lambda.uri,
+      aws_api_gateway_integration.get_packages_code_images_lambda.uri,
       aws_api_gateway_integration.post_packages_code_images_lambda.uri,
       aws_api_gateway_integration.get_packages_code_tracks_lambda.uri,
       aws_api_gateway_integration.get_packages_code_tracks_latest_lambda.uri,
@@ -934,7 +965,7 @@ resource "aws_api_gateway_integration_response" "options_packages_code_images_20
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin"  = "'*'",
-    "method.response.header.Access-Control-Allow-Methods" = "'POST, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET, POST, OPTIONS'",
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
   }
 
