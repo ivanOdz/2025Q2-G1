@@ -10,6 +10,8 @@ FRONTEND_DIR="CLOUD-TP-frontend"
 
 FRONTEND_BUCKET_NAME=$1
 API_ARN_O_URL=$2
+COGNITO_USER_POOL_ID=$3
+COGNITO_CLIENT_ID=$4
 
 
 convert_arn_to_url() {
@@ -42,8 +44,8 @@ safe_remove_directory() {
 }
 
 
-if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$API_ARN_O_URL" ]; then
-    echo "Error: Faltan argumentos. Se requiere el nombre del bucket y la URL/ARN del API Gateway."
+if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$API_ARN_O_URL" ] || [ -z "$COGNITO_USER_POOL_ID" ] || [ -z "$COGNITO_CLIENT_ID" ]; then
+    echo "Error: Faltan argumentos. Se requiere el nombre del bucket, la URL/ARN del API Gateway, el User Pool ID y el Client ID de Cognito."
     exit 1
 fi
 

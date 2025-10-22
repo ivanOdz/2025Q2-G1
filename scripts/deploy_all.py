@@ -73,6 +73,14 @@ def main():
         api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_execution_arn"], 
                                       capture_output=True, text=True, check=True, shell=True)
         api_url = api_url_result.stdout.strip()
+        
+        cognito_user_pool_id_result = subprocess.run(["terraform", "output", "-raw", "cognito_user_pool_id"], 
+                                                    capture_output=True, text=True, check=True, shell=True)
+        cognito_user_pool_id = cognito_user_pool_id_result.stdout.strip()
+        
+        cognito_client_id_result = subprocess.run(["terraform", "output", "-raw", "cognito_user_pool_client_id"], 
+                                                capture_output=True, text=True, check=True, shell=True)
+        cognito_client_id = cognito_client_id_result.stdout.strip()
     except subprocess.CalledProcessError:
         print("Error: No se pudieron obtener los outputs de terraform.")
         os.chdir(original_dir)
@@ -80,16 +88,18 @@ def main():
 
     print(f"FRONTEND_BUCKET_NAME: {frontend_bucket_name}")
     print(f"API_URL: {api_url}")
+    print(f"COGNITO_USER_POOL_ID: {cognito_user_pool_id}")
+    print(f"COGNITO_CLIENT_ID: {cognito_client_id}")
 
     # Volver al directorio original
     os.chdir(original_dir)
 
-    if not frontend_bucket_name or not api_url:
-        print("Proceso detenido: Faltan Outputs. Revisa la definición de 'frontend_bucket_name' y 'api_gateway_base_url'.")
+    if not frontend_bucket_name or not api_url or not cognito_user_pool_id or not cognito_client_id:
+        print("Proceso detenido: Faltan Outputs. Revisa la definición de 'frontend_bucket_name', 'api_gateway_execution_arn', 'cognito_user_pool_id' y 'cognito_user_pool_client_id'.")
         sys.exit(1)
 
     print("\n=== 3. DESPLIEGUE DEL CONTENIDO (Frontend S3) ===")
-    result = subprocess.run(["python", deploy_frontend_script, frontend_bucket_name, api_url], check=False, shell=True)
+    result = subprocess.run(["python", deploy_frontend_script, frontend_bucket_name, api_url, cognito_user_pool_id, cognito_client_id], check=False, shell=True)
     if result.returncode != 0:
         print("🚨 Proceso detenido: Falló el despliegue del frontend.")
         sys.exit(1)

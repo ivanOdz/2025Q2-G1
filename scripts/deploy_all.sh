@@ -66,6 +66,8 @@ fi
 
 FRONTEND_BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
 API_URL=$(terraform output -raw api_gateway_execution_arn)
+COGNITO_USER_POOL_ID=$(terraform output -raw cognito_user_pool_id)
+COGNITO_CLIENT_ID=$(terraform output -raw cognito_user_pool_client_id)
 
 if [ $? -ne 0 ]; then
     echo "Error: No se pudieron obtener los outputs de terraform."
@@ -75,16 +77,18 @@ fi
 
 echo "FRONTEND_BUCKET_NAME: $FRONTEND_BUCKET_NAME"
 echo "API_URL: $API_URL"
+echo "COGNITO_USER_POOL_ID: $COGNITO_USER_POOL_ID"
+echo "COGNITO_CLIENT_ID: $COGNITO_CLIENT_ID"
 
 cd ..
-if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$API_URL" ]; then
-    echo "Proceso detenido: Faltan Outputs. Revisa la definición de 'frontend_bucket_name' y 'api_gateway_execution_arn'."
+if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$API_URL" ] || [ -z "$COGNITO_USER_POOL_ID" ] || [ -z "$COGNITO_CLIENT_ID" ]; then
+    echo "Proceso detenido: Faltan Outputs. Revisa la definición de 'frontend_bucket_name', 'api_gateway_execution_arn', 'cognito_user_pool_id' y 'cognito_user_pool_client_id'."
     exit 1
 fi
 
 
 echo -e "\n=== 3. DESPLIEGUE DEL CONTENIDO (Frontend S3) ==="
-python3 "$DEPLOY_FRONTEND_SCRIPT" "$FRONTEND_BUCKET_NAME" "$API_URL" 
+python3 "$DEPLOY_FRONTEND_SCRIPT" "$FRONTEND_BUCKET_NAME" "$API_URL" "$COGNITO_USER_POOL_ID" "$COGNITO_CLIENT_ID" 
 
 if [ $? -ne 0 ]; then
     echo "🚨 Proceso detenido: Falló el despliegue del frontend."

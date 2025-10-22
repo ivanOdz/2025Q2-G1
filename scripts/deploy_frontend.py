@@ -37,12 +37,14 @@ def safe_remove_directory(dir_path):
         return False
 
 def main():
-    if len(sys.argv) != 3:
-        print("Error: Faltan argumentos. Se requiere el nombre del bucket y la URL del API Gateway.")
+    if len(sys.argv) != 5:
+        print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID y el Client ID de Cognito.")
         sys.exit(1)
 
     frontend_bucket_name = sys.argv[1]
     api_arn = sys.argv[2]
+    cognito_user_pool_id = sys.argv[3]
+    cognito_client_id = sys.argv[4]
     
     # Convertir ARN de API Gateway a URL HTTP
     # Formato ARN: arn:aws:execute-api:region:account:api-id/*
@@ -59,8 +61,8 @@ def main():
         api_url = api_arn
         print(f"Usando URL directamente: {api_url}")
 
-    if not frontend_bucket_name or not api_url:
-        print("Error: Faltan argumentos. Se requiere el nombre del bucket y la URL del API Gateway.")
+    if not frontend_bucket_name or not api_url or not cognito_user_pool_id or not cognito_client_id:
+        print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID y el Client ID de Cognito.")
         sys.exit(1)
 
     print("-> 1. Verificando y obteniendo la aplicación Frontend desde Git...")
@@ -82,7 +84,7 @@ def main():
         print("Error fatal: No se pudo acceder al directorio clonado. Abortando.")
         sys.exit(1)
 
-    print("-> 2. Inyectando URL de API Gateway en .env.production...")
+    print("-> 2. Inyectando variables de entorno en .env.production...")
     env_file = ".env.production"
     
     # Leer el archivo .env.production
@@ -94,14 +96,25 @@ def main():
         os.chdir(original_dir)
         sys.exit(1)
 
-    # Filtrar líneas que no contengan REACT_APP_API_URL y agregar la nueva
-    filtered_lines = [line for line in lines if not line.startswith("REACT_APP_API_URL=")]
+    # Filtrar líneas que no contengan las variables que vamos a inyectar
+    filtered_lines = [line for line in lines if not any(line.startswith(var) for var in [
+        "REACT_APP_API_URL=", 
+        "REACT_APP_COGNITO_USER_POOL_ID=", 
+        "REACT_APP_COGNITO_CLIENT_ID="
+    ])]
     
     # Construir la URL final para el frontend
     final_api_url = f"{api_url}/api"
-    filtered_lines.append(f"REACT_APP_API_URL={final_api_url}\n")
     
-    print(f"Escribiendo en {env_file}: REACT_APP_API_URL={final_api_url}")
+    # Agregar todas las variables de entorno
+    filtered_lines.append(f"REACT_APP_API_URL={final_api_url}\n")
+    filtered_lines.append(f"REACT_APP_COGNITO_USER_POOL_ID={cognito_user_pool_id}\n")
+    filtered_lines.append(f"REACT_APP_COGNITO_CLIENT_ID={cognito_client_id}\n")
+    
+    print(f"Escribiendo en {env_file}:")
+    print(f"  REACT_APP_API_URL={final_api_url}")
+    print(f"  REACT_APP_COGNITO_USER_POOL_ID={cognito_user_pool_id}")
+    print(f"  REACT_APP_COGNITO_CLIENT_ID={cognito_client_id}")
 
     # Escribir el archivo modificado
     with open(env_file, 'w') as f:
