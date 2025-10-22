@@ -13,6 +13,23 @@ tracks_table = dynamodb.Table('package-tracking-tracks')
 packages_table = dynamodb.Table('package-tracking-packages')
 depots_table = dynamodb.Table('package-tracking-depots')
 
+def cors_response(status_code, body=None):
+    """
+    Create a CORS-enabled response
+    """
+    response = {
+        'statusCode': status_code,
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+        }
+    }
+    
+    if body is not None:
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+    
+    return response
+
 def lambda_handler(event, context):
     """
     Handle track-related API requests
@@ -32,11 +49,7 @@ def lambda_handler(event, context):
         # Get package code from path
         package_code = path_parameters.get('code')
         if not package_code:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Package code is required'})
-            }
+            return cors_response(400, {'error': 'Package code is required'})
         
         # Route to appropriate handler
         if http_method == 'GET' and 'latest' in event.get('path', ''):
@@ -46,19 +59,11 @@ def lambda_handler(event, context):
         elif http_method == 'POST':
             return create_track(package_code, json.loads(event['body']), user_id, user_role)
         else:
-            return {
-                'statusCode': 405,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
+            return cors_response(405, {'error': 'Method not allowed'})
             
     except Exception as e:
         print(f"Error in tracks_handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+        return cors_response(500, {'error': 'Internal server error'})
 
 def get_tracks_list(package_code, user_id, user_role):
     """Get complete track history for a package"""
@@ -83,19 +88,11 @@ def get_tracks_list(package_code, user_id, user_role):
         # Sort by timestamp
         tracks.sort(key=lambda x: x['timestamp'])
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(tracks)
-        }
+        return cors_response(200, tracks)
         
     except Exception as e:
         print(f"Error getting tracks list: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve tracks'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve tracks'})
 
 def get_latest_track(package_code, user_id, user_role):
     """Get the latest track for a package"""
@@ -127,19 +124,11 @@ def get_latest_track(package_code, user_id, user_role):
         # Get the latest track
         latest_track = max(tracks, key=lambda x: x['timestamp'])
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(latest_track)
-        }
+        return cors_response(200, latest_track)
         
     except Exception as e:
         print(f"Error getting latest track: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve latest track'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve latest track'})
 
 def create_track(package_code, track_data, user_id, user_role):
     """Create a new track event"""
@@ -155,22 +144,14 @@ def create_track(package_code, track_data, user_id, user_role):
         
         # Validate required fields
         if 'action' not in track_data:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Action is required'})
-            }
+            return cors_response(400, {'error': 'Action is required'})
         
         action = track_data['action']
         
         # Validate state transition
         can_transition, message = can_transition_to(current_state, action)
         if not can_transition:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': message})
-            }
+            return cors_response(400, {'error': message})
         
         # Create track item
         track_id = str(uuid.uuid4())
@@ -215,19 +196,11 @@ def create_track(package_code, track_data, user_id, user_role):
             Subject='Package Track Updated'
         )
         
-        return {
-            'statusCode': 201,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(track_item)
-        }
+        return cors_response(201, track_item)
         
     except Exception as e:
         print(f"Error creating track: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to create track'})
-        }
+        return cors_response(500, {'error': 'Failed to create track'})
 
 def get_package_by_code(package_code, user_id, user_role):
     """Get package by code with access control"""
@@ -239,35 +212,19 @@ def get_package_by_code(package_code, user_id, user_role):
         )
         
         if not response['Items']:
-            return {
-                'statusCode': 404,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Package not found'})
-            }
+            return cors_response(404, {'error': 'Package not found'})
         
         package = response['Items'][0]
         
         # Check if user has access to this package
         if user_role != 'admin' and package['sender_id'] != user_id:
-            return {
-                'statusCode': 403,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Access denied'})
-            }
+            return cors_response(403, {'error': 'Access denied'})
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(package)
-        }
+        return cors_response(200, package)
         
     except Exception as e:
         print(f"Error getting package by code: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve package'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve package'})
 
 def can_transition_to(current_state, action):
     """Validate if state transition is allowed"""

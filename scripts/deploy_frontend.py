@@ -10,13 +10,44 @@ from pathlib import Path
 GIT_REPO_URL = "https://github.com/julietaTechenski/CLOUD-TP-frontend"
 FRONTEND_DIR = "CLOUD-TP-frontend"
 
+def safe_remove_directory(dir_path):
+    """Elimina un directorio de manera segura en Windows"""
+    if not os.path.exists(dir_path):
+        return True
+    
+    try:
+        shutil.rmtree(dir_path)
+        return True
+    except PermissionError:
+        print(f"Advertencia: No se pudo eliminar {dir_path} debido a permisos de Windows.")
+        print("Esto es normal cuando Git mantiene archivos bloqueados.")
+        return False
+    except Exception as e:
+        print(f"Advertencia: Error al eliminar {dir_path}: {e}")
+        return False
+
 def main():
     if len(sys.argv) != 3:
         print("Error: Faltan argumentos. Se requiere el nombre del bucket y la URL del API Gateway.")
         sys.exit(1)
 
     frontend_bucket_name = sys.argv[1]
-    api_url = sys.argv[2]
+    api_arn = sys.argv[2]
+    
+    # Convertir ARN de API Gateway a URL HTTP
+    # Formato ARN: arn:aws:execute-api:region:account:api-id/*
+    # Formato URL: https://api-id.execute-api.region.amazonaws.com/stage
+    if api_arn.startswith("arn:aws:execute-api:"):
+        parts = api_arn.split(":")
+        region = parts[3]
+        account = parts[4]
+        api_id = parts[5].split("/")[0]  # Tomar solo la parte antes del /
+        api_url = f"http://{api_id}.execute-api.{region}.amazonaws.com"
+        print(f"ARN convertido a URL: {api_arn} -> {api_url}")
+    else:
+        # Si ya es una URL, usarla tal como está
+        api_url = api_arn
+        print(f"Usando URL directamente: {api_url}")
 
     if not frontend_bucket_name or not api_url:
         print("Error: Faltan argumentos. Se requiere el nombre del bucket y la URL del API Gateway.")
@@ -24,12 +55,11 @@ def main():
 
     print("-> 1. Verificando y obteniendo la aplicación Frontend desde Git...")
 
-    # Eliminar directorio si existe
-    if os.path.exists(FRONTEND_DIR):
-        shutil.rmtree(FRONTEND_DIR)
+    # Eliminar directorio si existe (con manejo de errores de Windows)
+    safe_remove_directory(FRONTEND_DIR)
 
     # Clonar el repositorio
-    result = subprocess.run(["git", "clone", GIT_REPO_URL], check=False)
+    result = subprocess.run(["git", "clone", GIT_REPO_URL], check=False, shell=True)
     if result.returncode != 0:
         print("Error: Falló el git clone. Abortando.")
         sys.exit(1)
@@ -56,7 +86,12 @@ def main():
 
     # Filtrar líneas que no contengan REACT_APP_API_URL y agregar la nueva
     filtered_lines = [line for line in lines if not line.startswith("REACT_APP_API_URL=")]
-    filtered_lines.append(f"REACT_APP_API_URL={api_url}/api\n")
+    
+    # Construir la URL final para el frontend
+    final_api_url = f"{api_url}/api"
+    filtered_lines.append(f"REACT_APP_API_URL={final_api_url}\n")
+    
+    print(f"Escribiendo en {env_file}: REACT_APP_API_URL={final_api_url}")
 
     # Escribir el archivo modificado
     with open(env_file, 'w') as f:
@@ -65,14 +100,14 @@ def main():
     print("-> 3. Instalando dependencias y construyendo la aplicación (React)...")
     
     # Instalar dependencias
-    result = subprocess.run(["npm", "install"], check=False)
+    result = subprocess.run(["npm", "install"], check=False, shell=True)
     if result.returncode != 0:
         print("Error: Falló la instalación de dependencias.")
         os.chdir(original_dir)
         sys.exit(1)
 
     # Construir la aplicación
-    result = subprocess.run(["npm", "run", "build"], check=False)
+    result = subprocess.run(["npm", "run", "build"], check=False, shell=True)
     if result.returncode != 0:
         print("Error: Falló la construcción del Frontend. Abortando.")
         os.chdir(original_dir)
@@ -81,7 +116,7 @@ def main():
     print(f"-> 4. Sincronizando el contenido de 'build/' con s3://{frontend_bucket_name}...")
     
     # Sincronizar con S3
-    result = subprocess.run(["aws", "s3", "sync", "build/", f"s3://{frontend_bucket_name}", "--delete"], check=False)
+    result = subprocess.run(["aws", "s3", "sync", "build/", f"s3://{frontend_bucket_name}", "--delete"], check=False, shell=True)
     sync_status = result.returncode
 
     print("-> 5. Limpieza de archivos locales...")
@@ -89,8 +124,8 @@ def main():
     # Volver al directorio original
     os.chdir(original_dir)
     
-    # Eliminar el directorio clonado
-    shutil.rmtree(FRONTEND_DIR)
+    # Eliminar el directorio clonado con manejo de errores de Windows
+    safe_remove_directory(FRONTEND_DIR)
 
     if sync_status == 0:
         print(f"Despliegue de Frontend en S3 completado en s3://{frontend_bucket_name}")

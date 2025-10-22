@@ -7,7 +7,7 @@ from zipfile import ZipFile
 # -----------------------------
 # CONFIG
 # -----------------------------
-LAMBDA_DIR = "lambdas"
+LAMBDA_DIR = "packaged"
 FUNCTIONS = [
     ("packages_handler", "packages_handler.py"),
     ("tracks_handler", "tracks_handler.py"),
@@ -23,13 +23,14 @@ FUNCTIONS = [
 def run(cmd):
     """Run shell command with visible output and error handling"""
     print(f"$ {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, shell=True)
 
 def package_lambda(function_name: str, source_file: str):
     print(f"\n Packaging {function_name}...")
 
     # Create temp dir
     temp_dir = tempfile.mkdtemp()
+    print(f"Temp dir: {source_file}")
     shutil.copy(source_file, temp_dir)
 
     # Install dependencies if requirements.txt exists

@@ -11,6 +11,23 @@ dynamodb = boto3.resource('dynamodb')
 depots_table = dynamodb.Table('package-tracking-depots')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 
+def cors_response(status_code, body=None):
+    """
+    Create a CORS-enabled response
+    """
+    response = {
+        'statusCode': status_code,
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+        }
+    }
+    
+    if body is not None:
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+    
+    return response
+
 def lambda_handler(event, context):
     """
     Handle depot-related API requests
@@ -35,19 +52,11 @@ def lambda_handler(event, context):
         elif http_method == 'GET' and path_parameters.get('id'):
             return get_depot_by_id(path_parameters['id'])
         else:
-            return {
-                'statusCode': 405,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
+            return cors_response(405, {'error': 'Method not allowed'})
             
     except Exception as e:
         print(f"Error in depots_handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+        return cors_response(500, {'error': 'Internal server error'})
 
 def get_depots_list():
     """Get list of all depots with address details"""
@@ -67,19 +76,11 @@ def get_depots_list():
             
             enriched_depots.append(depot)
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(enriched_depots)
-        }
+        return cors_response(200, enriched_depots)
         
     except Exception as e:
         print(f"Error getting depots list: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve depots'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve depots'})
 
 def create_depot(depot_data):
     """Create a new depot"""
@@ -88,11 +89,7 @@ def create_depot(depot_data):
         required_fields = ['name', 'address_id']
         for field in required_fields:
             if field not in depot_data:
-                return {
-                    'statusCode': 400,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({'error': f'Missing required field: {field}'})
-                }
+                return cors_response(400, {'error': f'Missing required field: {field}'})
         
         # Verify address exists
         address_response = addresses_table.get_item(
@@ -100,11 +97,7 @@ def create_depot(depot_data):
         )
         
         if 'Item' not in address_response:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Address not found'})
-            }
+            return cors_response(400, {'error': 'Address not found'})
         
         # Create depot item
         depot_id = str(uuid.uuid4())
@@ -121,19 +114,11 @@ def create_depot(depot_data):
         # Add address details to response
         depot_item['address_detail'] = address_response['Item']
         
-        return {
-            'statusCode': 201,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(depot_item)
-        }
+        return cors_response(201, depot_item)
         
     except Exception as e:
         print(f"Error creating depot: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to create depot'})
-        }
+        return cors_response(500, {'error': 'Failed to create depot'})
 
 def get_depot_by_id(depot_id):
     """Get depot details by ID"""
@@ -143,11 +128,7 @@ def get_depot_by_id(depot_id):
         )
         
         if 'Item' not in response:
-            return {
-                'statusCode': 404,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Depot not found'})
-            }
+            return cors_response(404, {'error': 'Depot not found'})
         
         depot = response['Item']
         
@@ -159,16 +140,8 @@ def get_depot_by_id(depot_id):
             if 'Item' in address_response:
                 depot['address_detail'] = address_response['Item']
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(depot)
-        }
+        return cors_response(200, depot)
         
     except Exception as e:
         print(f"Error getting depot by ID: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve depot'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve depot'})

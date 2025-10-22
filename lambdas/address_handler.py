@@ -10,6 +10,23 @@ dynamodb = boto3.resource('dynamodb')
 # Table references
 addresses_table = dynamodb.Table('package-tracking-addresses')
 
+def cors_response(status_code, body=None):
+    """
+    Create a CORS-enabled response
+    """
+    response = {
+        'statusCode': status_code,
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+        }
+    }
+    
+    if body is not None:
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+    
+    return response
+
 def lambda_handler(event, context):
     """
     Handle address-related API requests
@@ -34,19 +51,11 @@ def lambda_handler(event, context):
         elif http_method == 'GET' and path_parameters.get('id'):
             return get_address_by_id(path_parameters['id'])
         else:
-            return {
-                'statusCode': 405,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
+            return cors_response(405, {'error': 'Method not allowed'})
             
     except Exception as e:
         print(f"Error in address_handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+        return cors_response(500, {'error': 'Internal server error'})
 
 def get_addresses_list():
     """Get list of all addresses"""
@@ -54,19 +63,11 @@ def get_addresses_list():
         response = addresses_table.scan()
         addresses = response['Items']
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(addresses)
-        }
+        return cors_response(200, addresses)
         
     except Exception as e:
         print(f"Error getting addresses list: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve addresses'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve addresses'})
 
 def create_address(address_data):
     """Create a new address"""
@@ -98,19 +99,11 @@ def create_address(address_data):
         # Save to DynamoDB
         addresses_table.put_item(Item=address_item)
         
-        return {
-            'statusCode': 201,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(address_item)
-        }
+        return cors_response(201, address_item)
         
     except Exception as e:
         print(f"Error creating address: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to create address'})
-        }
+        return cors_response(500, {'error': 'Failed to create address'})
 
 def get_address_by_id(address_id):
     """Get address details by ID"""
@@ -120,24 +113,12 @@ def get_address_by_id(address_id):
         )
         
         if 'Item' not in response:
-            return {
-                'statusCode': 404,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Address not found'})
-            }
+            return cors_response(404, {'error': 'Address not found'})
         
         address = response['Item']
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(address)
-        }
+        return cors_response(200, address)
         
     except Exception as e:
         print(f"Error getting address by ID: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve address'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve address'})

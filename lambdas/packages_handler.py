@@ -14,6 +14,23 @@ packages_table = dynamodb.Table('package-tracking-packages')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 users_table = dynamodb.Table('package-tracking-users')
 
+def cors_response(status_code, body=None):
+    """
+    Create a CORS-enabled response
+    """
+    response = {
+        'statusCode': status_code,
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+        }
+    }
+    
+    if body is not None:
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+    
+    return response
+
 def lambda_handler(event, context):
     """
     Handle package-related API requests
@@ -39,19 +56,11 @@ def lambda_handler(event, context):
         elif http_method == 'GET' and path_parameters.get('code'):
             return get_package_by_code(path_parameters['code'], user_id, user_role)
         else:
-            return {
-                'statusCode': 405,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
+            return cors_response(405, {'error': 'Method not allowed'})
             
     except Exception as e:
         print(f"Error in packages_handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+        return cors_response(500, {'error': 'Internal server error'})
 
 def get_packages_list(query_params, user_id, user_role):
     """Get list of packages with optional filtering"""
@@ -74,19 +83,11 @@ def get_packages_list(query_params, user_id, user_role):
             if 'weight' in package and package['weight']:
                 package['weight'] = float(package['weight'])
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(packages)
-        }
+        return cors_response(200, packages)
         
     except Exception as e:
         print(f"Error getting packages list: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve packages'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve packages'})
 
 def create_package(package_data, user_id, user_email):
     """Create a new package"""
@@ -95,11 +96,7 @@ def create_package(package_data, user_id, user_email):
         required_fields = ['origin', 'destination', 'receiver_name', 'receiver_email']
         for field in required_fields:
             if field not in package_data:
-                return {
-                    'statusCode': 400,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({'error': f'Missing required field: {field}'})
-                }
+                return cors_response(400, {'error': f'Missing required field: {field}'})
         
         # Generate unique package code
         package_code = generate_package_code()
@@ -143,19 +140,11 @@ def create_package(package_data, user_id, user_email):
         if package_item['weight']:
             package_item['weight'] = float(package_item['weight'])
         
-        return {
-            'statusCode': 201,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(package_item)
-        }
+        return cors_response(201, package_item)
         
     except Exception as e:
         print(f"Error creating package: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to create package'})
-        }
+        return cors_response(500, {'error': 'Failed to create package'})
 
 def get_package_by_code(package_code, user_id, user_role):
     """Get package details by code"""
@@ -167,39 +156,23 @@ def get_package_by_code(package_code, user_id, user_role):
         )
         
         if not response['Items']:
-            return {
-                'statusCode': 404,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Package not found'})
-            }
+            return cors_response(404, {'error': 'Package not found'})
         
         package = response['Items'][0]
         
         # Check if user has access to this package
         if user_role != 'admin' and package['sender_id'] != user_id:
-            return {
-                'statusCode': 403,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Access denied'})
-            }
+            return cors_response(403, {'error': 'Access denied'})
         
         # Convert Decimal to float for response
         if package.get('weight'):
             package['weight'] = float(package['weight'])
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(package)
-        }
+        return cors_response(200, package)
         
     except Exception as e:
         print(f"Error getting package by code: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve package'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve package'})
 
 def generate_package_code():
     """Generate unique 8-digit package code"""

@@ -28,8 +28,13 @@ def main():
 
     print("=== 1. PREPARACIÓN: Empaquetado del Backend (Lambda) ===")
     
-    # Ejecutar el script de empaquetado de lambdas
-    result = subprocess.run(["python", "lambdas/script.py"], check=False)
+    # Cambiar al directorio 'lambdas', ejecutar el empaquetado y volver al original
+    original_dir = os.getcwd()
+    try:
+        os.chdir("lambdas")
+        result = subprocess.run(["python", "script.py"], check=False)
+    finally:
+        os.chdir(original_dir)
     if result.returncode != 0:
         print("Error: Falló el empaquetado de las funciones Lambda.")
         sys.exit(1)
@@ -46,14 +51,14 @@ def main():
         sys.exit(1)
 
     print("Ejecutando 'terraform init'...")
-    result = subprocess.run(["terraform", "init"], check=False)
+    result = subprocess.run(["terraform", "init"], check=False, shell=True)
     if result.returncode != 0:
         print("Error: Falló el 'terraform init'.")
         os.chdir(original_dir)
         sys.exit(1)
 
     print("Ejecutando 'terraform apply'...")
-    result = subprocess.run(["terraform", "apply", "-auto-approve", f"-var-file={tfvars_file}"], check=False)
+    result = subprocess.run(["terraform", "apply", "-auto-approve", f"-var-file={tfvars_file}"], check=False, shell=True)
     if result.returncode != 0:
         print("Proceso detenido: Falló el 'terraform apply'.")
         os.chdir(original_dir)
@@ -62,11 +67,11 @@ def main():
     # Obtener outputs de terraform
     try:
         frontend_bucket_result = subprocess.run(["terraform", "output", "-raw", "frontend_bucket_name"], 
-                                              capture_output=True, text=True, check=True)
+                                              capture_output=True, text=True, check=True, shell=True)
         frontend_bucket_name = frontend_bucket_result.stdout.strip()
         
-        api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_arn"], 
-                                      capture_output=True, text=True, check=True)
+        api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_execution_arn"], 
+                                      capture_output=True, text=True, check=True, shell=True)
         api_url = api_url_result.stdout.strip()
     except subprocess.CalledProcessError:
         print("Error: No se pudieron obtener los outputs de terraform.")
@@ -84,7 +89,7 @@ def main():
         sys.exit(1)
 
     print("\n=== 3. DESPLIEGUE DEL CONTENIDO (Frontend S3) ===")
-    result = subprocess.run(["python", deploy_frontend_script, frontend_bucket_name, api_url], check=False)
+    result = subprocess.run(["python", deploy_frontend_script, frontend_bucket_name, api_url], check=False, shell=True)
     if result.returncode != 0:
         print("🚨 Proceso detenido: Falló el despliegue del frontend.")
         sys.exit(1)

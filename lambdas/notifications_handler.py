@@ -7,6 +7,23 @@ from botocore.exceptions import ClientError
 ses = boto3.client('ses')  # For email notifications
 sns = boto3.client('sns')  # For SMS notifications (if needed)
 
+def cors_response(status_code, body=None):
+    """
+    Create a CORS-enabled response
+    """
+    response = {
+        'statusCode': status_code,
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+        }
+    }
+    
+    if body is not None:
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+    
+    return response
+
 def lambda_handler(event, context):
     """
     Handle notifications from SQS queue
@@ -32,17 +49,11 @@ def lambda_handler(event, context):
             else:
                 print(f"Unknown action type: {action}")
         
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'message': 'Notifications processed successfully'})
-        }
+        return cors_response(200, {'message': 'Notifications processed successfully'})
         
     except Exception as e:
         print(f"Error in notifications_handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': 'Failed to process notifications'})
-        }
+        return cors_response(500, {'error': 'Failed to process notifications'})
 
 def handle_package_created_notification(message_data):
     """Handle package creation notification"""

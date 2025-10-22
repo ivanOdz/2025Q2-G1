@@ -16,6 +16,23 @@ sns = boto3.client('sns')
 package_images_table = dynamodb.Table('package-tracking-images')
 packages_table = dynamodb.Table('package-tracking-packages')
 
+def cors_response(status_code, body=None):
+    """
+    Create a CORS-enabled response
+    """
+    response = {
+        'statusCode': status_code,
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
+        }
+    }
+    
+    if body is not None:
+        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+    
+    return response
+
 def lambda_handler(event, context):
     """
     Handle image-related API requests
@@ -35,11 +52,7 @@ def lambda_handler(event, context):
         # Get package code from path
         package_code = path_parameters.get('code')
         if not package_code:
-            return {
-                'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Package code is required'})
-            }
+            return cors_response(400, {'error': 'Package code is required'})
         
         # Route to appropriate handler
         if http_method == 'POST':
@@ -47,19 +60,11 @@ def lambda_handler(event, context):
         elif http_method == 'GET':
             return get_package_images(package_code, user_id, user_role)
         else:
-            return {
-                'statusCode': 405,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
+            return cors_response(405, {'error': 'Method not allowed'})
             
     except Exception as e:
         print(f"Error in images_handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Internal server error'})
-        }
+        return cors_response(500, {'error': 'Internal server error'})
 
 def upload_image(package_code, event, user_id, user_role):
     """Upload image for a package"""
@@ -97,11 +102,7 @@ def upload_image(package_code, event, user_id, user_role):
                         file_data = lines[i + 4]
             
             if not file_data:
-                return {
-                    'statusCode': 400,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({'error': 'Image file is required'})
-                }
+                return cors_response(400, {'error': 'Image file is required'})
         else:
             # Handle JSON payload with base64 image
             body = json.loads(event.get('body', '{}'))
@@ -109,11 +110,7 @@ def upload_image(package_code, event, user_id, user_role):
             file_data = body.get('image')
             
             if not file_data:
-                return {
-                    'statusCode': 400,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({'error': 'Image data is required'})
-                }
+                return cors_response(400, {'error': 'Image data is required'})
         
         # Generate S3 key
         file_extension = '.jpg'  # Default extension
@@ -155,11 +152,7 @@ def upload_image(package_code, event, user_id, user_role):
             
         except Exception as e:
             print(f"Error uploading to S3: {str(e)}")
-            return {
-                'statusCode': 500,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Failed to upload image to S3'})
-            }
+            return cors_response(500, {'error': 'Failed to upload image to S3'})
         
         # Save image metadata to DynamoDB
         image_id = str(uuid.uuid4())
@@ -191,25 +184,17 @@ def upload_image(package_code, event, user_id, user_role):
             Subject='Package Image Uploaded'
         )
         
-        return {
-            'statusCode': 201,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({
-                'id': image_id,
-                'package_id': package_id,
-                'purpose': purpose,
-                's3_key': s3_key,
-                'created_at': image_item['created_at']
-            })
-        }
+        return cors_response(201, {
+            'id': image_id,
+            'package_id': package_id,
+            'purpose': purpose,
+            's3_key': s3_key,
+            'created_at': image_item['created_at']
+        })
         
     except Exception as e:
         print(f"Error uploading image: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to upload image'})
-        }
+        return cors_response(500, {'error': 'Failed to upload image'})
 
 def get_package_images(package_code, user_id, user_role):
     """Get all images for a package"""
@@ -244,19 +229,11 @@ def get_package_images(package_code, user_id, user_role):
                 print(f"Error generating presigned URL: {str(e)}")
                 image['presigned_url'] = None
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(images)
-        }
+        return cors_response(200, images)
         
     except Exception as e:
         print(f"Error getting package images: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve images'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve images'})
 
 def get_package_by_code(package_code, user_id, user_role):
     """Get package by code with access control"""
@@ -268,32 +245,16 @@ def get_package_by_code(package_code, user_id, user_role):
         )
         
         if not response['Items']:
-            return {
-                'statusCode': 404,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Package not found'})
-            }
+            return cors_response(404, {'error': 'Package not found'})
         
         package = response['Items'][0]
         
         # Check if user has access to this package
         if user_role != 'admin' and package['sender_id'] != user_id:
-            return {
-                'statusCode': 403,
-                'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Access denied'})
-            }
+            return cors_response(403, {'error': 'Access denied'})
         
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps(package)
-        }
+        return cors_response(200, package)
         
     except Exception as e:
         print(f"Error getting package by code: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to retrieve package'})
-        }
+        return cors_response(500, {'error': 'Failed to retrieve package'})
