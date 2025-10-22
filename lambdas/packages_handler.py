@@ -12,6 +12,7 @@ sns = boto3.client('sns')
 
 # Table references
 packages_table = dynamodb.Table('package-tracking-packages')
+tracks_table = dynamodb.Table('package-tracking-tracks')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 users_table = dynamodb.Table('package-tracking-users')
 
@@ -135,6 +136,17 @@ def create_package(package_data, user_id, user_email):
         # Save to DynamoDB
         packages_table.put_item(Item=package_item)
         
+        track_item = {
+            'track_id': str(uuid.uuid4()),
+            'package_id': package_id,
+            'timestamp': datetime.utcnow().isoformat(),
+            'action': 'CREATED',
+            'depot_id': None,
+            'comment': "Package created"
+        }
+
+        tracks_table.put_item(Item=track_item)
+
         # Publish to SNS for notifications
         sns_message = {
             'package_id': package_id,
