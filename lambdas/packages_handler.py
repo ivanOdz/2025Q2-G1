@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from botocore.exceptions import ClientError
+import os
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
@@ -157,7 +158,7 @@ def create_package(package_data, user_id, user_email):
         
     except Exception as e:
         print(f"Error creating package: {str(e)}")
-        return cors_response(500, {'error': 'Failed to create package'})
+        return cors_response(500, {'error': str(e)})
 
 def get_package_by_code(package_code, user_id, user_role):
     """Get package details by code"""
