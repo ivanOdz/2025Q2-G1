@@ -38,21 +38,21 @@ The infrastructure is organized into logical modules:
 ## How to Deploy
 
 The deployment process is automated through platform-specific scripts that handle Lambda packaging, Terraform execution, output retrieval, and frontend deployment.
-The deployment script requires one argument: the environment (dev or prod).
+The deployment script requires one argument: the environment (dev).
 
 ### 1. Execute the Deployment Script
 All deployment commands must be executed from the root directory of the project. Use the appropriate command based on your operating system:
 
 For Windows:
 ```sh
-python scripts/deploy_all.py <dev|prod>
+python scripts/deploy_all.py dev
 ```
 
 For macOS / Linux:
 ```sh
 python3 -m venv venv
 source venv/bin/activate
-sh ./scripts/deploy_all.sh <dev|prod>
+sh ./scripts/deploy_all.sh dev
 ```
 
 The script performs the following actions sequentially:
@@ -70,11 +70,11 @@ terraform output
 ```
 
 ### 3. Create Depots
-In order to set up correctly the environment run the following script to create the depots.
+In order to set up correctly the environment run the following script to create the depots from the root directory.
 
 For Windows:
 ```sh
-python ./scripts/create_depots_create.py
+python ./scripts/create_depots_direct.py
 
 ```
 
@@ -82,12 +82,15 @@ For macOS / Linux:
 ```sh
 source venv/bin/activate
 pip install boto3
-python3 ./scripts/create_depots_create.py
+python3 ./scripts/create_depots_direct.py
 
 ```
 
 ### 4. Set admin user
 To be able to administrate the package tracking portal you need to set create a new account on the web and then run the following commands. 
+
+From root directory: 
+
 For Windows:
 ```sh
 python ./scripts/promote_admin.py
