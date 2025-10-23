@@ -1,3 +1,64 @@
+# WebSocket API Gateway
+resource "aws_apigatewayv2_api" "websocket_api" {
+  name          = "${local.base_name}-websocket-api"
+  protocol_type = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+  tags          = local.common_tags
+}
+
+# WebSocket Lambda Integration
+resource "aws_apigatewayv2_integration" "websocket_lambda" {
+  api_id           = aws_apigatewayv2_api.websocket_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = module.lambdas["notifications"].function_invoke_arn
+}
+
+# WebSocket Routes
+resource "aws_apigatewayv2_route" "connect" {
+  api_id    = aws_apigatewayv2_api.websocket_api.id
+  route_key = "$connect"
+  target    = "integrations/${aws_apigatewayv2_integration.websocket_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "disconnect" {
+  api_id    = aws_apigatewayv2_api.websocket_api.id
+  route_key = "$disconnect"
+  target    = "integrations/${aws_apigatewayv2_integration.websocket_lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.websocket_api.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.websocket_lambda.id}"
+}
+
+# WebSocket Stage
+resource "aws_apigatewayv2_stage" "websocket_stage" {
+  api_id      = aws_apigatewayv2_api.websocket_api.id
+  name        = "websocket"
+  auto_deploy = true
+  tags        = local.common_tags
+}
+
+# WebSocket Deployment
+resource "aws_apigatewayv2_deployment" "websocket_deployment" {
+  api_id      = aws_apigatewayv2_api.websocket_api.id
+  depends_on = [
+    aws_apigatewayv2_route.connect,
+    aws_apigatewayv2_route.disconnect,
+    aws_apigatewayv2_route.default
+  ]
+}
+
+# Lambda Permission for WebSocket API
+resource "aws_lambda_permission" "websocket_lambda_permission" {
+  statement_id  = "AllowExecutionFromWebSocketAPI"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambdas["notifications"].function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket_api.execution_arn}/*/*"
+}
+
 # API Gateway Configuration
 # Contains REST API, resources, methods, integrations, and deployment
 
@@ -359,7 +420,8 @@ resource "aws_api_gateway_method" "get_depots" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.depots.id
   http_method   = "GET"
-  authorization = "NONE" # Public endpoint for depot lookups
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
 }
 
 resource "aws_api_gateway_integration" "get_depots_lambda" {
@@ -377,7 +439,8 @@ resource "aws_api_gateway_method" "get_depots_id" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.depots_id.id
   http_method   = "GET"
-  authorization = "NONE" # Public endpoint for individual depot lookup
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
 }
 
 resource "aws_api_gateway_integration" "get_depots_id_lambda" {

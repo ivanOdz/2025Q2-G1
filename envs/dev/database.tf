@@ -214,3 +214,35 @@ module "dynamodb_package_images" {
 
 }
 
+# WebSocket Connections Table
+module "dynamodb_websocket_connections" {
+  source = "../../modules/dynamodb"
+
+  table_name   = "package-tracking-websocket-connections"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "connection_id"
+  range_key    = null
+
+  attributes = [
+    { name = "connection_id", type = "S" },
+    { name = "user_id",       type = "S" },
+    { name = "ttl",           type = "N" }
+  ]
+
+  global_secondary_indexes = [
+    {
+      name            = "user-id-index"
+      hash_key        = "user_id"
+      projection_type = "ALL"
+    }
+  ]
+
+  ttl_enabled = true
+  ttl_attribute_name = "ttl"
+
+  encryption_enabled             = false
+  point_in_time_recovery_enabled = false
+
+  tags = merge(local.common_tags, { Name = "package-tracking-websocket-connections" })
+}
+
