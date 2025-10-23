@@ -52,7 +52,7 @@ For macOS / Linux:
 ```sh
 python3 -m venv venv
 source venv/bin/activate
-sh ./scripts/main_deploy.sh <dev|prod>
+sh ./scripts/deploy_all.sh <dev|prod>
 ```
 
 The script performs the following actions sequentially:
@@ -69,14 +69,43 @@ cd envs/dev
 terraform output
 ```
 
-### 3. Destroy deployment
+### 3. Create Depots
+In order to set up correctly the environment run the following script to create the depots.
+
+For Windows:
+```sh
+python ./scripts/create_depots_create.py
+
+```
+
+For macOS / Linux:
+```sh
+source venv/bin/activate
+pip install boto3
+python3 ./scripts/create_depots_create.py
+
+```
+
+### 4. Set admin user
+To be able to administrate the package tracking portal you need to set create a new account on the web and then run the following commands. 
+For Windows:
+```sh
+python ./scripts/promote_admin.py
+
+```
+
+For macOS / Linux:
+```sh
+source venv/bin/activate
+pip install requests
+python3 ./scripts/create_depots_create.py
+
+```
+
+### 5. Destroy deployment
 To destroy all AWS resources created by Terraform, you must first manually empty the S3 buckets.
 Caution: Ensure you are in the correct envs/<env> directory before running terraform destroy.
 ```sh
-# Empty S3 buckets
-aws s3 rm s3://fast-track-delivery-serverless-images-bucket --recursive
-aws s3 rm s3://fast-track-delivery-serverless-frontend-bucket --recursive
-
 # Destroy all
 terraform destroy
 ```
