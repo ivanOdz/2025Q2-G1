@@ -23,7 +23,7 @@ def cors_response(status_code, body=None):
     }
     
     if body is not None:
-        response['body'] = json.dumps(body) if isinstance(body, dict) else str(body)
+        response['body'] = json.dumps(body)
     
     return response
 
@@ -76,11 +76,7 @@ def create_address(address_data):
         required_fields = ['street', 'number', 'city', 'province', 'zip_code']
         for field in required_fields:
             if field not in address_data:
-                return {
-                    'statusCode': 400,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({'error': f'Missing required field: {field}'})
-                }
+                return cors_response(400, {'error': f'Missing required field: {field}'})
         
         # Create address item
         address_id = str(uuid.uuid4())
