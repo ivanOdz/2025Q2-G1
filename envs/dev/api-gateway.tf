@@ -359,7 +359,8 @@ resource "aws_api_gateway_method" "get_depots" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.depots.id
   http_method   = "GET"
-  authorization = "NONE" # Public endpoint for depot lookups
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
 }
 
 resource "aws_api_gateway_integration" "get_depots_lambda" {
@@ -377,7 +378,8 @@ resource "aws_api_gateway_method" "get_depots_id" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.depots_id.id
   http_method   = "GET"
-  authorization = "NONE" # Public endpoint for individual depot lookup
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
 }
 
 resource "aws_api_gateway_integration" "get_depots_id_lambda" {
