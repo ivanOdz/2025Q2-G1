@@ -8,7 +8,6 @@ We are building the following event-driven, serverless architecture:
 
 ![Architecture Diagram](./architecture-diagram.png)
 
-
 ## Prerequisites
 
 Before you begin, ensure you have the following tools installed and configured:
@@ -39,21 +38,21 @@ The infrastructure is organized into logical modules:
 ## How to Deploy
 
 The deployment process is automated through platform-specific scripts that handle Lambda packaging, Terraform execution, output retrieval, and frontend deployment.
-The deployment script requires one argument: the environment (dev or prod).
+The deployment script requires one argument: the environment (dev).
 
 ### 1. Execute the Deployment Script
 All deployment commands must be executed from the root directory of the project. Use the appropriate command based on your operating system:
 
 For Windows:
 ```sh
-python scripts/deploy_all.py <dev|prod>
+python scripts/deploy_all.py dev
 ```
 
 For macOS / Linux:
 ```sh
 python3 -m venv venv
 source venv/bin/activate
-sh ./scripts/main_deploy.sh <dev|prod>
+sh ./scripts/deploy_all.sh dev
 ```
 
 The script performs the following actions sequentially:
@@ -70,14 +69,46 @@ cd envs/dev
 terraform output
 ```
 
-### 3. Destroy deployment
+### 3. Create Depots
+In order to set up correctly the environment run the following script to create the depots from the root directory.
+
+For Windows:
+```sh
+python ./scripts/create_depots_direct.py
+
+```
+
+For macOS / Linux:
+```sh
+source venv/bin/activate
+pip install boto3
+python3 ./scripts/create_depots_direct.py
+
+```
+
+### 4. Set admin user
+To be able to administrate the package tracking portal you need to set create a new account on the web and then run the following commands. 
+
+From root directory: 
+
+For Windows:
+```sh
+python ./scripts/promote_admin.py
+
+```
+
+For macOS / Linux:
+```sh
+source venv/bin/activate
+pip install requests
+python3 ./scripts/create_depots_create.py
+
+```
+
+### 5. Destroy deployment
 To destroy all AWS resources created by Terraform, you must first manually empty the S3 buckets.
 Caution: Ensure you are in the correct envs/<env> directory before running terraform destroy.
 ```sh
-# Empty S3 buckets
-aws s3 rm s3://fast-track-delivery-serverless-images-bucket --recursive
-aws s3 rm s3://fast-track-delivery-serverless-frontend-bucket --recursive
-
 # Destroy all
 terraform destroy
 ```

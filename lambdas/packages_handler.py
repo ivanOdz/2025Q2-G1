@@ -152,7 +152,7 @@ def create_package(package_data, user_id, user_email):
             'track_id': str(uuid.uuid4()),
             'package_id': package_id,
             'timestamp': datetime.utcnow().isoformat(),
-            'action': 'CREATED',
+            'action': 'CREATE',
             'depot_id': None,
             'comment': "Package created"
         }

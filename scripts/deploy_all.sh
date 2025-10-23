@@ -2,7 +2,7 @@
 
 # =================================================================
 # USO: Se debe ejecutar desde la Carpeta Raíz del Proyecto:
-#      ./scripts/main_deploy.sh <dev|prod>
+#      ./scripts/deploy_deploy.sh <dev|prod>
 #
 
 
@@ -18,7 +18,7 @@ TFVARS_FILE="$ENV.tfvars"
 
 PACKAGE_SCRIPT_DIR="lambdas"
 PACKAGE_SCRIPT_NAME="script.py"
-DEPLOY_FRONTEND_SCRIPT="./scripts/deploy_frontend.py"
+DEPLOY_FRONTEND_SCRIPT="./scripts/deploy_frontend.sh"
 
 if [ ! -d "$TERRAFORM_DIR" ]; then
     echo "Error: Directorio de Terraform para el entorno '$ENV' no encontrado en: $TERRAFORM_DIR"
@@ -85,10 +85,10 @@ if [ -z "$FRONTEND_BUCKET_NAME" ] || [ -z "$API_URL" ] || [ -z "$COGNITO_USER_PO
     echo "Proceso detenido: Faltan Outputs. Revisa la definición de 'frontend_bucket_name', 'api_gateway_execution_arn', 'cognito_user_pool_id' y 'cognito_user_pool_client_id'."
     exit 1
 fi
-
+cd ..
 
 echo -e "\n=== 3. DESPLIEGUE DEL CONTENIDO (Frontend S3) ==="
-python3 "$DEPLOY_FRONTEND_SCRIPT" "$FRONTEND_BUCKET_NAME" "$API_URL" "$COGNITO_USER_POOL_ID" "$COGNITO_CLIENT_ID" 
+sh "$DEPLOY_FRONTEND_SCRIPT" "$FRONTEND_BUCKET_NAME" "$API_URL" "$COGNITO_USER_POOL_ID" "$COGNITO_CLIENT_ID" 
 
 if [ $? -ne 0 ]; then
     echo "🚨 Proceso detenido: Falló el despliegue del frontend."
