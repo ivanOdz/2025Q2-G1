@@ -6,7 +6,7 @@ This repository contains the Terraform code for our "Fast Track Delivery" projec
 
 We are building the following event-driven, serverless architecture:
 
-![Architecture Diagram](./architecture-diagram.jpg)
+![Architecture Diagram](./architecture-diagram.png)
 
 ## Prerequisites
 
