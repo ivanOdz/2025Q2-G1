@@ -8,8 +8,12 @@ resource "aws_dynamodb_table" "main" {
   range_key      = var.range_key
 
   # Dynamically create attributes based on the attribute definitions
+  # Exclude TTL attributes from regular attribute creation
   dynamic "attribute" {
-    for_each = var.attributes
+    for_each = [
+      for attr in var.attributes : attr
+      if attr.name != var.ttl_attribute_name || !var.ttl_enabled
+    ]
     content {
       name = attribute.value.name
       type = attribute.value.type

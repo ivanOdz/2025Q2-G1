@@ -109,12 +109,12 @@ output "websocket_api_execution_arn" {
 
 output "websocket_api_endpoint" {
   description = "WebSocket API endpoint URL"
-  value       = "wss://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
+  value       = "wss://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
 }
 
 output "websocket_api_http_endpoint" {
   description = "WebSocket API HTTP endpoint URL"
-  value       = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
+  value       = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
 }
 
 # Storage outputs

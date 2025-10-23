@@ -54,7 +54,7 @@ module "lambdas" {
   env = {
     SNS_TOPIC_ARN  = aws_sns_topic.notifications.arn,
     S3_BUCKET_NAME = module.images_bucket.bucket_id,
-    WEBSOCKET_API_ENDPOINT = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
+    WEBSOCKET_API_ENDPOINT = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
   }
 
   # Garantizar que primero se creen bucket y objetos
