@@ -5,10 +5,14 @@ project_name = "fast-track-delivery"
 aws_region   = "us-east-1"
 
 # ¡El bucket debe ser globalmente único! OJO AL PIOJO CON ESTO pongo un //TODO
-code_bucket  = "fast-track-delivery-dev-code-2025-ddjvi-pokebown"
-images_bucket="fast-track-delivery-dev-images-2025-ddjvi-pokebown"
-frontend_bucket="fast-track-delivery-dev-frontend-2025-ddjvi-pokebown"
+code_bucket  = "fast-track-delivery-dev-code-2025-ddjvi-locrorico"
+images_bucket="fast-track-delivery-dev-images-2025-ddjvi-locrorico"
+frontend_bucket="fast-track-delivery-dev-frontend-2025-ddjvi-locrorico"
 lambda_zip_path = "../../lambdas/packaged"
+
+# VPC Configuration
+single_nat_gateway = false  # Use one NAT Gateway per public subnet for high availability
+
 # Agrega (digamos) data governance (opcional despues le damos mas sentido)
 extra_tags = {
   owner = "team-dev"
