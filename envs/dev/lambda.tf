@@ -53,11 +53,12 @@ module "lambdas" {
   # Variables de entorno usadas por los handlers
   env = {
     SNS_TOPIC_ARN  = aws_sns_topic.notifications.arn,
-    S3_BUCKET_NAME = module.images_bucket.bucket_id
+    S3_BUCKET_NAME = module.images_bucket.bucket_id,
+    WEBSOCKET_API_ENDPOINT = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
   }
 
   # Garantizar que primero se creen bucket y objetos
-  depends_on = [module.lambda_code_bucket, aws_s3_object.lambda_artifacts, module.vpc,aws_sns_topic.notifications]
+  depends_on = [module.lambda_code_bucket, aws_s3_object.lambda_artifacts, module.vpc, aws_sns_topic.notifications, aws_apigatewayv2_api.websocket_api, aws_apigatewayv2_stage.websocket_stage]
 }
 
 # 4) Permisos para que API Gateway invoque cada Lambda

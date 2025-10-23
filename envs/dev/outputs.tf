@@ -91,6 +91,32 @@ output "api_gateway_deployment_id" {
   value       = aws_api_gateway_deployment.api_deploy.id
 }
 
+# WebSocket API outputs
+output "websocket_api_id" {
+  description = "ID of the WebSocket API Gateway"
+  value       = aws_apigatewayv2_api.websocket_api.id
+}
+
+output "websocket_api_arn" {
+  description = "ARN of the WebSocket API Gateway"
+  value       = aws_apigatewayv2_api.websocket_api.arn
+}
+
+output "websocket_api_execution_arn" {
+  description = "Execution ARN of the WebSocket API Gateway"
+  value       = aws_apigatewayv2_api.websocket_api.execution_arn
+}
+
+output "websocket_api_endpoint" {
+  description = "WebSocket API endpoint URL"
+  value       = "wss://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
+}
+
+output "websocket_api_http_endpoint" {
+  description = "WebSocket API HTTP endpoint URL"
+  value       = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
+}
+
 # Storage outputs
 output "images_bucket_name" {
   description = "The name/ID of the S3 bucket for images."
