@@ -5,9 +5,9 @@ project_name = "fast-track-delivery"
 aws_region   = "us-east-1"
 
 # ¡El bucket debe ser globalmente único! OJO AL PIOJO CON ESTO pongo un //TODO
-code_bucket  = "fast-track-delivery-dev-code-2025-ddjvi-locrorico"
-images_bucket="fast-track-delivery-dev-images-2025-ddjvi-locrorico"
-frontend_bucket="fast-track-delivery-dev-frontend-2025-ddjvi-locrorico"
+code_bucket  = "fast-track-delivery-dev-code-2025-ddjvi-asado-vegano"
+images_bucket="fast-track-delivery-dev-images-2025-ddjvi-asado-vegano"
+frontend_bucket="fast-track-delivery-dev-frontend-2025-ddjvi-asado-vegano"
 lambda_zip_path = "../../lambdas/packaged"
 
 # VPC Configuration

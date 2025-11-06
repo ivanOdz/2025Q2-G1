@@ -43,6 +43,27 @@ The deployment script requires one argument: the environment (dev).
 ### 1. Execute the Deployment Script
 All deployment commands must be executed from the root directory of the project. Use the appropriate command based on your operating system:
 
+> ⚠️ **Important – Update S3 bucket names before any deploy**
+>
+> Before running any deployment, you **must change the S3 bucket names** to unique values for your environment.
+> These variables are defined in `envs/dev/dev.tfvars`:
+>
+> - `code_bucket`
+> - `images_bucket`
+> - `frontend_bucket`
+>
+> 💡 Tip: make them unique by adding something memorable, like your favorite food.  
+> For example:
+> ```hcl
+> code_bucket      = "fast-track-delivery-dev-code-2025-ddjvi-asado-vegano"
+> images_bucket    = "fast-track-delivery-dev-images-2025-ddjvi-asado-vegano"
+> frontend_bucket  = "fast-track-delivery-dev-frontend-2025-ddjvi-asado-vegano"
+> ```
+
+
+
+
+
 For Windows:
 ```sh
 python scripts/deploy_all.py dev
