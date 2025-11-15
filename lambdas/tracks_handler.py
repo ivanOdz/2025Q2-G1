@@ -13,6 +13,7 @@ sns = boto3.client('sns')
 tracks_table = dynamodb.Table('package-tracking-tracks')
 packages_table = dynamodb.Table('package-tracking-packages')
 depots_table = dynamodb.Table('package-tracking-depots')
+addresses_table = dynamodb.Table('package-tracking-addresses')
 
 def convert_decimals_to_float(obj):
     """Convert Decimal objects to float for JSON serialization"""
@@ -72,7 +73,20 @@ def lambda_handler(event, context):
             return cors_response(400, {'error': 'Package code is required'})
         
         # Route to appropriate handler
-        if http_method == 'GET' and 'latest' in event.get('path', ''):
+        if 'scan' in event.get('path', ''):
+            if http_method == 'GET':
+                # GET scan info requires authentication (to check if user is admin)
+                if user_role == 'anon':
+                    return cors_response(401, {'error': 'Authentication required'})
+                return get_scan_info(package_code)
+            elif http_method == 'POST':
+                # POST scan requires authentication and admin role
+                if user_role == 'anon':
+                    return cors_response(401, {'error': 'Authentication required'})
+                return handle_qr_scan(package_code, user_id, user_role)
+            else:
+                return cors_response(405, {'error': 'Method not allowed'})
+        elif http_method == 'GET' and 'latest' in event.get('path', ''):
             return get_latest_track(package_code, user_id, user_role)
         elif http_method == 'GET':
             return get_tracks_list(package_code, user_id, user_role)
@@ -277,3 +291,141 @@ def get_new_state(current_state, action):
     }
     
     return state_mapping.get(action, current_state)
+
+def get_scan_info(package_code):
+    """Get scan information for QR code - what action can be performed"""
+    try:
+        # Get package
+        package = get_package_by_code(package_code, None, 'anon')
+        if package['statusCode'] != 200:
+            return package
+        
+        package_data = json.loads(package['body'])
+        current_state = package_data['state']
+        
+        # Get latest track
+        package_id = package_data['package_id']
+        tracks_response = tracks_table.query(
+            IndexName='package-index',
+            KeyConditionExpression='package_id = :package_id',
+            ExpressionAttributeValues={':package_id': package_id}
+        )
+        
+        tracks = tracks_response['Items']
+        if not tracks:
+            return cors_response(200, {
+                'can_auto_confirm': False,
+                'current_state': current_state,
+                'message': 'No tracks found for this package'
+            })
+        
+        latest_track = max(tracks, key=lambda x: x['timestamp'])
+        last_action = latest_track.get('action')
+        depot_id = latest_track.get('depot_id')
+        
+        # Get depot name if depot_id exists
+        depot_name = None
+        if depot_id:
+            try:
+                depot_response = depots_table.get_item(Key={'depot_id': depot_id})
+                if 'Item' in depot_response:
+                    depot_name = depot_response['Item'].get('name')
+            except Exception as e:
+                print(f"Warning: Could not retrieve depot name: {str(e)}")
+        
+        # Determine if we can auto-confirm
+        can_auto_confirm = False
+        suggested_action = None
+        message = ""
+        
+        if current_state == 'IN_TRANSIT':
+            if last_action == 'SEND_DEPOT':
+                can_auto_confirm = True
+                suggested_action = 'ARRIVED_DEPOT'
+                if depot_name:
+                    message = f"Package is on the way to depot '{depot_name}'. Scan to confirm arrival."
+                else:
+                    message = "Package is on the way to a depot. Scan to confirm arrival."
+            elif last_action == 'SEND_FINAL':
+                can_auto_confirm = True
+                suggested_action = 'ARRIVED_FINAL'
+                # Get destination address for final delivery
+                destination_address = None
+                if package_data.get('destination'):
+                    try:
+                        dest_response = addresses_table.get_item(Key={'address_id': package_data['destination']})
+                        if 'Item' in dest_response:
+                            dest_addr = dest_response['Item']
+                            destination_address = f"{dest_addr.get('street', '')} {dest_addr.get('number', '')}, {dest_addr.get('city', '')}"
+                    except Exception as e:
+                        print(f"Warning: Could not retrieve destination address: {str(e)}")
+                
+                if destination_address:
+                    message = f"Package is on the way to final destination: {destination_address}. Scan to confirm delivery."
+                else:
+                    message = "Package is on the way to final destination. Scan to confirm delivery."
+        elif current_state == 'ON_HOLD':
+            if depot_name:
+                message = f"Package is at depot '{depot_name}'. Please use the management interface to select next destination."
+            else:
+                message = "Package is at a depot. Please use the management interface to select next destination."
+        elif current_state == 'CREATED':
+            message = "Package is ready to be sent. Please use the management interface to select destination."
+        elif current_state == 'DELIVERED':
+            message = "Package has already been delivered."
+        elif current_state == 'CANCELLED':
+            message = "Package delivery has been cancelled."
+        
+        return cors_response(200, {
+            'can_auto_confirm': can_auto_confirm,
+            'current_state': current_state,
+            'suggested_action': suggested_action,
+            'last_action': last_action,
+            'depot_id': latest_track.get('depot_id'),
+            'message': message
+        })
+        
+    except Exception as e:
+        print(f"Error getting scan info: {str(e)}")
+        return cors_response(500, {'error': 'Failed to get scan information'})
+
+def handle_qr_scan(package_code, user_id, user_role):
+    """Handle QR code scan - auto-confirm arrival if package is in transit"""
+    try:
+        # Only admins can scan QR codes to update package status
+        if user_role != 'admin':
+            return cors_response(403, {'error': 'Only administrators can scan QR codes to update package status'})
+        
+        # Get scan info first
+        scan_info_response = get_scan_info(package_code)
+        if scan_info_response['statusCode'] != 200:
+            return scan_info_response
+        
+        scan_info = json.loads(scan_info_response['body'])
+        
+        # Only auto-confirm if package is in transit
+        if not scan_info.get('can_auto_confirm'):
+            return cors_response(400, {
+                'error': 'Cannot auto-confirm',
+                'message': scan_info.get('message', 'Package is not in transit'),
+                'current_state': scan_info.get('current_state')
+            })
+        
+        suggested_action = scan_info.get('suggested_action')
+        depot_id = scan_info.get('depot_id')
+        
+        # Create track with auto-confirmation
+        track_data = {
+            'action': suggested_action,
+            'comment': f'Auto-confirmed via QR scan by admin at {datetime.utcnow().isoformat()}',
+        }
+        
+        if depot_id and suggested_action == 'ARRIVED_DEPOT':
+            track_data['depot_id'] = depot_id
+        
+        # Use create_track function with admin user
+        return create_track(package_code, track_data, user_id, user_role)
+        
+    except Exception as e:
+        print(f"Error handling QR scan: {str(e)}")
+        return cors_response(500, {'error': 'Failed to process QR scan'})

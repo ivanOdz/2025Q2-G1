@@ -145,6 +145,17 @@ resource "aws_api_gateway_resource" "packages_code_tracks_latest" {
   path_part   = "latest"
 }
 
+# Packages/{code}/tracks/scan resource for QR code scanning
+resource "aws_api_gateway_resource" "packages_code_tracks_scan" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+  parent_id   = aws_api_gateway_resource.packages_code_tracks.id
+  path_part   = "scan"
+}
+
 # Addresses resource
 resource "aws_api_gateway_resource" "addresses" {
   rest_api_id = aws_api_gateway_rest_api.api.id
@@ -340,6 +351,44 @@ resource "aws_api_gateway_integration" "get_packages_code_tracks_latest_lambda" 
   uri                     = module.lambdas["tracks"].function_invoke_arn
 }
 
+# GET /packages/{code}/tracks/scan - Get scan information
+resource "aws_api_gateway_method" "get_packages_code_tracks_scan" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint - requires authentication
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "get_packages_code_tracks_scan_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method = aws_api_gateway_method.get_packages_code_tracks_scan.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY" # proxies to lambda
+  uri                     = module.lambdas["tracks"].function_invoke_arn
+}
+
+# POST /packages/{code}/tracks/scan - Handle QR scan
+resource "aws_api_gateway_method" "post_packages_code_tracks_scan" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS" # Protected endpoint - requires authentication (admin only)
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "post_packages_code_tracks_scan_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method = aws_api_gateway_method.post_packages_code_tracks_scan.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY" # proxies to lambda
+  uri                     = module.lambdas["tracks"].function_invoke_arn
+}
+
 # POST /packages/{code}/tracks
 resource "aws_api_gateway_method" "post_packages_code_tracks" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
@@ -483,6 +532,8 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.get_packages_code_tracks_lambda,
     aws_api_gateway_integration.get_packages_code_tracks_latest_lambda,
     aws_api_gateway_integration.post_packages_code_tracks_lambda,
+    aws_api_gateway_integration.get_packages_code_tracks_scan_lambda,
+    aws_api_gateway_integration.post_packages_code_tracks_scan_lambda,
     aws_api_gateway_integration.post_addresses_lambda,
     aws_api_gateway_integration.get_addresses_lambda,
     aws_api_gateway_integration.get_addresses_id_lambda,
@@ -498,6 +549,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.options_tracks_mock,
     aws_api_gateway_integration.options_packages_code_tracks_mock,
     aws_api_gateway_integration.options_packages_code_tracks_latest_mock,
+    aws_api_gateway_integration.options_packages_code_tracks_scan_mock,
     aws_api_gateway_integration.options_packages_code_images_mock,
     aws_api_gateway_integration.options_change_role_mock
   ]
@@ -516,6 +568,8 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_integration.get_packages_code_tracks_lambda.uri,
       aws_api_gateway_integration.get_packages_code_tracks_latest_lambda.uri,
       aws_api_gateway_integration.post_packages_code_tracks_lambda.uri,
+      aws_api_gateway_integration.get_packages_code_tracks_scan_lambda.uri,
+      aws_api_gateway_integration.post_packages_code_tracks_scan_lambda.uri,
       aws_api_gateway_integration.post_addresses_lambda.uri,
       aws_api_gateway_integration.get_addresses_lambda.uri,
       aws_api_gateway_integration.get_addresses_id_lambda.uri,
@@ -1067,6 +1121,57 @@ resource "aws_api_gateway_integration_response" "options_packages_code_tracks_la
   }
 
   depends_on = [aws_api_gateway_integration.options_packages_code_tracks_latest_mock]
+}
+
+# OPTIONS /packages/{code}/tracks/scan
+resource "aws_api_gateway_method" "options_packages_code_tracks_scan" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_packages_code_tracks_scan_mock" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks_scan.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_packages_code_tracks_scan_200" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks_scan.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_packages_code_tracks_scan_200_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code_tracks_scan.id
+  http_method = aws_api_gateway_method.options_packages_code_tracks_scan.http_method
+  status_code = aws_api_gateway_method_response.options_packages_code_tracks_scan_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET, POST, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+  }
+
+  depends_on = [aws_api_gateway_integration.options_packages_code_tracks_scan_mock]
 }
 
 # OPTIONS /packages/{code}/images
