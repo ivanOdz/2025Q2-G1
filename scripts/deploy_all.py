@@ -70,7 +70,7 @@ def main():
                                               capture_output=True, text=True, check=True, shell=True)
         frontend_bucket_name = frontend_bucket_result.stdout.strip()
         
-        api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_execution_arn"], 
+        api_url_result = subprocess.run(["terraform", "output", "-raw", "api_gateway_invoke_url"], 
                                       capture_output=True, text=True, check=True, shell=True)
         api_url = api_url_result.stdout.strip()
         

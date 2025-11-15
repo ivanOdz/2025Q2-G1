@@ -91,6 +91,11 @@ output "api_gateway_deployment_id" {
   value       = aws_api_gateway_deployment.api_deploy.id
 }
 
+output "api_gateway_invoke_url" {
+  description = "Invoke URL of the API Gateway (with stage)"
+  value       = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${aws_api_gateway_stage.api_stage.stage_name}"
+}
+
 # WebSocket API outputs
 output "websocket_api_id" {
   description = "ID of the WebSocket API Gateway"

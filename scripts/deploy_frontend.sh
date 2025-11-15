@@ -14,24 +14,33 @@ COGNITO_USER_POOL_ID=$3
 COGNITO_CLIENT_ID=$4
 
 
-# Función: Convierte un ARN de API Gateway a una URL base.
+# Función: Convierte un ARN de API Gateway a una URL base (si es necesario).
+# Ahora esperamos que se pase la URL de invocación directamente desde Terraform.
 convert_arn_to_url() {
-    local arn="$1"
+    local input="$1"
     
-    if [[ "$arn" == arn:aws:execute-api:* ]]; then
+    # Si ya es una URL completa (empieza con https://), usarla tal cual
+    if [[ "$input" == https://* ]]; then
+        echo "$input"
+        return
+    fi
+    
+    # Si es un ARN, convertirlo (esto es para compatibilidad hacia atrás)
+    if [[ "$input" == arn:aws:execute-api:* ]]; then
         # Extraer región (campo 4) y el sufijo ARN (campo 6)
-        REGION=$(echo "$arn" | cut -d':' -f4)
-        ARN_SUFFIX=$(echo "$arn" | cut -d':' -f6)
+        REGION=$(echo "$input" | cut -d':' -f4)
+        ARN_SUFFIX=$(echo "$input" | cut -d':' -f6)
         
         # Extraer API ID (primera parte del sufijo, antes de '/')
         API_ID=$(echo "$ARN_SUFFIX" | cut -d'/' -f1)
 
-        # Construir la URL base
-        # Nota: Usamos HTTPS, ya que es el estándar para API Gateway
-        API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com"
+        # Construir la URL base con el stage "api"
+        # Nota: El stage "api" está hardcodeado aquí, pero debería venir del output de Terraform
+        API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/api"
+        echo "$API_URL"
     else
-        # Si no es un ARN, lo devolvemos tal cual.
-        echo "$arn"
+        # Si no es un ARN ni una URL, devolverlo tal cual
+        echo "$input"
     fi
 }
 
@@ -65,7 +74,9 @@ else
     echo "Usando URL directamente: $API_BASE_URL"
 fi
 
-FINAL_API_URL="${API_BASE_URL}/api"
+# La URL ya incluye el stage, no necesitamos agregar /api
+# El frontend debe usar esta URL como base y agregar las rutas como /addresses, /packages, etc.
+FINAL_API_URL="$API_BASE_URL"
 
 
 echo "-> 1. Verificando y obteniendo la aplicación Frontend desde Git..."

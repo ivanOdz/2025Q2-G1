@@ -2,6 +2,7 @@
 
 import sys
 import os
+import stat
 import subprocess
 import tempfile
 import shutil
@@ -46,20 +47,27 @@ def main():
     cognito_user_pool_id = sys.argv[3]
     cognito_client_id = sys.argv[4]
     
-    # Convertir ARN de API Gateway a URL HTTP
+    # Convertir ARN de API Gateway a URL HTTP (si es necesario)
+    # Ahora esperamos que se pase la URL de invocación directamente desde Terraform
     # Formato ARN: arn:aws:execute-api:region:account:api-id/*
     # Formato URL: https://api-id.execute-api.region.amazonaws.com/stage
-    if api_arn.startswith("arn:aws:execute-api:"):
+    if api_arn.startswith("https://"):
+        # Si ya es una URL completa, usarla tal como está
+        api_url = api_arn
+        print(f"Usando URL directamente: {api_url}")
+    elif api_arn.startswith("arn:aws:execute-api:"):
+        # Si es un ARN, convertirlo (compatibilidad hacia atrás)
         parts = api_arn.split(":")
         region = parts[3]
         account = parts[4]
         api_id = parts[5].split("/")[0]  # Tomar solo la parte antes del /
-        api_url = f"https://{api_id}.execute-api.{region}.amazonaws.com"
+        # El stage "api" está hardcodeado aquí, pero debería venir del output de Terraform
+        api_url = f"https://{api_id}.execute-api.{region}.amazonaws.com/api"
         print(f"ARN convertido a URL: {api_arn} -> {api_url}")
     else:
-        # Si ya es una URL, usarla tal como está
+        # Si no es un ARN ni una URL, usarlo tal como está
         api_url = api_arn
-        print(f"Usando URL directamente: {api_url}")
+        print(f"Usando valor directamente: {api_url}")
 
     if not frontend_bucket_name or not api_url or not cognito_user_pool_id or not cognito_client_id:
         print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID y el Client ID de Cognito.")
@@ -103,8 +111,9 @@ def main():
         "REACT_APP_COGNITO_CLIENT_ID="
     ])]
     
-    # Construir la URL final para el frontend
-    final_api_url = f"{api_url}/api"
+    # La URL ya incluye el stage, no necesitamos agregar /api
+    # El frontend debe usar esta URL como base y agregar las rutas como /addresses, /packages, etc.
+    final_api_url = api_url
     
     # Agregar todas las variables de entorno
     filtered_lines.append(f"REACT_APP_API_URL={final_api_url}\n")

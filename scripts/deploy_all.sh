@@ -65,7 +65,7 @@ fi
 
 
 FRONTEND_BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
-API_URL=$(terraform output -raw api_gateway_execution_arn)
+API_URL=$(terraform output -raw api_gateway_invoke_url)
 COGNITO_USER_POOL_ID=$(terraform output -raw cognito_user_pool_id)
 COGNITO_CLIENT_ID=$(terraform output -raw cognito_user_pool_client_id)
 
