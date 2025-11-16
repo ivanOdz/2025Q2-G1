@@ -16,6 +16,21 @@ tracks_table = dynamodb.Table('package-tracking-tracks')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 users_table = dynamodb.Table('package-tracking-users')
 
+ALLOWED_PRIORITIES = {"NORMAL", "PRIORITY", "HIGH_PRIORITY"}
+
+def normalize_priority(value):
+    """Normalize priority to canonical values; return None if invalid."""
+    if not value:
+        return None
+    text = str(value).strip().replace("-", "_").upper()
+    # common aliases
+    aliases = {
+        "HIGH PRIORITY": "HIGH_PRIORITY",
+        "HIGHPRIORITY": "HIGH_PRIORITY",
+    }
+    text = aliases.get(text, text)
+    return text if text in ALLOWED_PRIORITIES else None
+
 def convert_decimals_to_float(obj):
     """Convert Decimal objects to float for JSON serialization"""
     if isinstance(obj, Decimal):
@@ -81,6 +96,12 @@ def lambda_handler(event, context):
         elif http_method == 'GET' and path_parameters.get('code'):
             # public endpoint
             return get_package_by_code(path_parameters['code'], user_id, user_role)
+        
+        elif http_method in ('PATCH', 'PUT') and path_parameters.get('code'):
+            if user_role == 'anon':
+                return cors_response(401, {'error': 'Authentication required'})
+            body = json.loads(event.get('body') or '{}')
+            return update_package_priority(path_parameters['code'], body, user_id, user_role)
 
         else:
             return cors_response(405, {'error': 'Method not allowed'})
@@ -140,6 +161,7 @@ def create_package(package_data, user_id, user_email):
             'receiver_email': package_data['receiver_email'],
             'size': package_data.get('size'),
             'weight': Decimal(str(package_data['weight'])) if package_data.get('weight') else None,
+            'priority': normalize_priority(package_data.get('priority')) or 'NORMAL',
             'state': 'CREATED',
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
@@ -213,6 +235,45 @@ def get_package_by_code(package_code, user_id, user_role):
     except Exception as e:
         print(f"Error getting package by code: {str(e)}")
         return cors_response(500, {'error': 'Failed to retrieve package'})
+
+def update_package_priority(package_code, body, user_id, user_role):
+    """Update only the priority of a package (sender or admin)"""
+    try:
+        # Fetch package (with access check)
+        pkg_resp = packages_table.query(
+            IndexName='code-index',
+            KeyConditionExpression='code = :code',
+            ExpressionAttributeValues={':code': package_code}
+        )
+        if not pkg_resp['Items']:
+            return cors_response(404, {'error': 'Package not found'})
+        package = pkg_resp['Items'][0]
+
+        # Authorization: admin or sender
+        if user_role != 'admin' and package.get('sender_id') != user_id:
+            return cors_response(403, {'error': 'Access denied'})
+
+        # Validate priority
+        new_priority = normalize_priority(body.get('priority'))
+        if not new_priority:
+            return cors_response(400, {'error': 'Invalid priority. Allowed: NORMAL, PRIORITY, HIGH_PRIORITY'})
+
+        packages_table.update_item(
+            Key={'package_id': package['package_id']},
+            UpdateExpression='SET #priority = :priority, updated_at = :updated_at',
+            ExpressionAttributeNames={'#priority': 'priority'},
+            ExpressionAttributeValues={
+                ':priority': new_priority,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+        )
+
+        package['priority'] = new_priority
+        return cors_response(200, {'message': 'Priority updated', 'package': package})
+
+    except Exception as e:
+        print(f"Error updating package priority: {str(e)}")
+        return cors_response(500, {'error': 'Failed to update package priority'})
 
 def generate_package_code():
     """Generate unique 8-digit package code"""

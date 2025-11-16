@@ -267,6 +267,25 @@ resource "aws_api_gateway_integration" "get_packages_code_lambda" {
   uri                     = module.lambdas["packages"].function_invoke_arn
 }
 
+# PATCH /packages/{code} - update priority (authenticated)
+resource "aws_api_gateway_method" "patch_packages_code" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.packages_code.id
+  http_method   = "PATCH"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "patch_packages_code_lambda" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.packages_code.id
+  http_method = aws_api_gateway_method.patch_packages_code.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambdas["packages"].function_invoke_arn
+}
+
 # GET /packages/{code}/images (for requesting upload URL)
 resource "aws_api_gateway_method" "get_packages_code_images" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
@@ -527,6 +546,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
     aws_api_gateway_integration.post_packages_lambda,
     aws_api_gateway_integration.get_packages_lambda,
     aws_api_gateway_integration.get_packages_code_lambda,
+    aws_api_gateway_integration.patch_packages_code_lambda,
     aws_api_gateway_integration.get_packages_code_images_lambda,
     aws_api_gateway_integration.post_packages_code_images_lambda,
     aws_api_gateway_integration.get_packages_code_tracks_lambda,
@@ -563,6 +583,7 @@ resource "aws_api_gateway_deployment" "api_deploy" {
       aws_api_gateway_integration.post_packages_lambda.uri,
       aws_api_gateway_integration.get_packages_lambda.uri,
       aws_api_gateway_integration.get_packages_code_lambda.uri,
+      aws_api_gateway_integration.patch_packages_code_lambda.uri,
       aws_api_gateway_integration.get_packages_code_images_lambda.uri,
       aws_api_gateway_integration.post_packages_code_images_lambda.uri,
       aws_api_gateway_integration.get_packages_code_tracks_lambda.uri,
@@ -759,7 +780,7 @@ resource "aws_api_gateway_integration_response" "options_packages_code_200_respo
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin"  = "'*'",
-    "method.response.header.Access-Control-Allow-Methods" = "'GET, OPTIONS'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET, PATCH, OPTIONS'",
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
   }
 

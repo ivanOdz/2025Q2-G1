@@ -15,6 +15,19 @@ packages_table = dynamodb.Table('package-tracking-packages')
 depots_table = dynamodb.Table('package-tracking-depots')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 
+ALLOWED_PRIORITIES = {"NORMAL", "PRIORITY", "HIGH_PRIORITY"}
+
+def normalize_priority(value):
+    if not value:
+        return None
+    text = str(value).strip().replace("-", "_").upper()
+    aliases = {
+        "HIGH PRIORITY": "HIGH_PRIORITY",
+        "HIGHPRIORITY": "HIGH_PRIORITY",
+    }
+    text = aliases.get(text, text)
+    return text if text in ALLOWED_PRIORITIES else None
+
 def convert_decimals_to_float(obj):
     """Convert Decimal objects to float for JSON serialization"""
     from decimal import Decimal
@@ -182,6 +195,13 @@ def create_track(package_code, track_data, user_id, user_role):
         can_transition, message = can_transition_to(current_state, action)
         if not can_transition:
             return cors_response(400, {'error': message})
+
+        # Normalize and validate optional priority
+        normalized_priority = None
+        if 'priority' in track_data and track_data.get('priority') is not None:
+            normalized_priority = normalize_priority(track_data.get('priority'))
+            if normalized_priority is None:
+                return cors_response(400, {'error': 'Invalid priority. Allowed: NORMAL, PRIORITY, HIGH_PRIORITY'})
         
         # Create track item
         track_id = str(uuid.uuid4())
@@ -193,20 +213,32 @@ def create_track(package_code, track_data, user_id, user_role):
             'comment': track_data.get('comment', ''),
             'timestamp': datetime.utcnow().isoformat()
         }
+        # Optional priority change recorded in track
+        if normalized_priority:
+            track_item['priority'] = normalized_priority
         
         # Save track to DynamoDB
         tracks_table.put_item(Item=track_item)
         
         # Update package state
         new_state = get_new_state(current_state, action)
+        update_expr = ['#state = :state', 'updated_at = :updated_at']
+        expr_attr_names = {'#state': 'state'}
+        expr_attr_values = {
+            ':state': new_state,
+            ':updated_at': datetime.utcnow().isoformat()
+        }
+        # If a priority is provided, persist it on the package
+        if normalized_priority:
+            update_expr.append('#priority = :priority')
+            expr_attr_names['#priority'] = 'priority'
+            expr_attr_values[':priority'] = normalized_priority
+
         packages_table.update_item(
             Key={'package_id': package_id},
-            UpdateExpression='SET #state = :state, updated_at = :updated_at',
-            ExpressionAttributeNames={'#state': 'state'},
-            ExpressionAttributeValues={
-                ':state': new_state,
-                ':updated_at': datetime.utcnow().isoformat()
-            }
+            UpdateExpression='SET ' + ', '.join(update_expr),
+            ExpressionAttributeNames=expr_attr_names,
+            ExpressionAttributeValues=expr_attr_values
         )
         
         # Publish to SNS for notifications
