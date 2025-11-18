@@ -1,14 +1,19 @@
 import json
 import boto3
 import uuid
-from datetime import datetime
+import hashlib
+from datetime import datetime, timezone
 from decimal import Decimal
 from botocore.exceptions import ClientError
 import os
+from email_templates import get_package_created_template
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 sns = boto3.client('sns')
+
+# SNS Topic prefix for email-specific topics
+SNS_TOPIC_PREFIX = 'fast-track-delivery-notifications-'
 
 # Table references
 packages_table = dynamodb.Table('package-tracking-packages')
@@ -17,6 +22,79 @@ addresses_table = dynamodb.Table('package-tracking-addresses')
 users_table = dynamodb.Table('package-tracking-users')
 
 ALLOWED_PRIORITIES = {"NORMAL", "PRIORITY", "HIGH_PRIORITY"}
+
+def normalize_email_for_topic(email):
+    """
+    Normalize email to create a valid SNS topic name
+    SNS topic names can only contain alphanumeric characters, hyphens, and underscores
+    """
+    # Replace @ with -at- and . with -dot-
+    normalized = email.lower().replace('@', '-at-').replace('.', '-dot-')
+    normalized = ''.join(c if c.isalnum() or c in ['-', '_'] else '-' for c in normalized)
+    return normalized
+
+def get_or_create_topic_for_email(email):
+    """
+    Get or create a unique SNS topic for a specific email address
+    SNS create_topic is idempotent - if topic exists, it returns the existing one
+    """
+    try:
+        if not email or '@' not in email:
+            print(f"Invalid email: {email}")
+            return None
+        
+        # Normalize email to create topic name
+        topic_name = f"{SNS_TOPIC_PREFIX}{normalize_email_for_topic(email)}"
+        
+        # SNS create_topic is idempotent - if topic exists, returns existing ARN
+        try:
+            create_response = sns.create_topic(Name=topic_name)
+            topic_arn = create_response['TopicArn']
+            print(f"Topic for {email}: {topic_arn}")
+            return topic_arn
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code == 'InvalidParameter':
+                # Topic name might be too long or invalid, try with hash
+                email_hash = hashlib.md5(email.encode()).hexdigest()[:8]
+                topic_name = f"{SNS_TOPIC_PREFIX}{email_hash}"
+                create_response = sns.create_topic(Name=topic_name)
+                topic_arn = create_response['TopicArn']
+                print(f"Created topic (with hash) for {email}: {topic_arn}")
+                return topic_arn
+            else:
+                print(f"Error creating topic: {str(e)}")
+                return None
+        
+    except Exception as e:
+        print(f"Error getting/creating topic for {email}: {str(e)}")
+        return None
+
+def subscribe_email_to_topic(email, topic_arn):
+    """
+    Subscribe email to SNS topic if not already subscribed
+    """
+    try:
+        # Check if already subscribed
+        subscriptions_response = sns.list_subscriptions_by_topic(TopicArn=topic_arn)
+        already_subscribed = any(
+            sub['Protocol'] == 'email' and sub['Endpoint'] == email 
+            for sub in subscriptions_response.get('Subscriptions', [])
+        )
+        
+        if not already_subscribed:
+            sns.subscribe(
+                TopicArn=topic_arn,
+                Protocol='email',
+                Endpoint=email
+            )
+            print(f"📧 Subscription request sent to {email}")
+        else:
+            print(f"✅ {email} is already subscribed")
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code not in ['SubscriptionLimitExceeded', 'InvalidParameter']:
+            print(f"Warning: Error subscribing email: {str(e)}")
 
 def normalize_priority(value):
     """Normalize priority to canonical values; return None if invalid."""
@@ -68,7 +146,6 @@ def lambda_handler(event, context):
     
     try:
         user_id = None
-        user_email = None
         user_role = 'anon'
 
         http_method = event['httpMethod']
@@ -77,7 +154,6 @@ def lambda_handler(event, context):
         if event.get('requestContext', {}).get('authorizer'):
             claims = event['requestContext']['authorizer']['claims']
             user_id = claims.get('sub')
-            user_email = claims.get('email')
             user_role = claims.get('custom:role', 'user')
 
         query_parameters = event.get('queryStringParameters', {})
@@ -91,7 +167,7 @@ def lambda_handler(event, context):
         elif http_method == 'POST' and not path_parameters:
             if user_role == 'anon':
                 return cors_response(401, {'error': 'Authentication required'})
-            return create_package(json.loads(event['body']), user_id, user_email)
+            return create_package(json.loads(event['body']), user_id)
 
         elif http_method == 'GET' and path_parameters.get('code'):
             # public endpoint
@@ -137,7 +213,7 @@ def get_packages_list(query_params, user_id, user_role):
         print(f"Error getting packages list: {str(e)}")
         return cors_response(500, {'error': 'Failed to retrieve packages'})
 
-def create_package(package_data, user_id, user_email):
+def create_package(package_data, user_id):
     """Create a new package"""
     try:
         # Validate required fields
@@ -181,20 +257,36 @@ def create_package(package_data, user_id, user_email):
 
         tracks_table.put_item(Item=track_item)
 
-        # Publish to SNS for notifications
-        sns_message = {
-            'package_id': package_id,
-            'code': package_code,
-            'user_id': user_id,
-            'action': 'package_created',
-            'timestamp': datetime.utcnow().isoformat()
-        }
-        
-        sns.publish(
-            TopicArn=os.environ['SNS_TOPIC_ARN'],
-            Message=json.dumps(sns_message),
-            Subject='Package Created'
-        )
+        # Publish to SNS topic specific to receiver email
+        receiver_email = package_data['receiver_email']
+        if receiver_email and '@' in receiver_email:
+            topic_arn = get_or_create_topic_for_email(receiver_email)
+            if topic_arn:
+                # Subscribe email to topic if not already subscribed
+                subscribe_email_to_topic(receiver_email, topic_arn)
+                
+                # Get frontend URL for tracking link
+                frontend_url = os.environ.get('FRONTEND_URL', '')
+                tracking_link = f"{frontend_url}/track/{package_code}" if frontend_url else f"Track your package using code: {package_code}"
+                
+                # Get email template
+                subject, message_body = get_package_created_template(
+                    receiver_name=package_data.get('receiver_name', ''),
+                    package_code=package_code,
+                    tracking_link=tracking_link,
+                    timestamp=datetime.utcnow().isoformat()
+                )
+                
+                sns.publish(
+                    TopicArn=topic_arn,
+                    Subject=subject,
+                    Message=message_body
+                )
+                print(f"Notification sent to {receiver_email} for package {package_code}")
+            else:
+                print(f"Could not create/get topic for {receiver_email}")
+        else:
+            print(f"Invalid receiver_email: {receiver_email}")
         
         # Convert Decimal to float for response
         if package_item['weight']:

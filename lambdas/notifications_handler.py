@@ -7,10 +7,15 @@ from botocore.exceptions import ClientError
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 apigatewaymanagementapi = boto3.client('apigatewaymanagementapi')
+sns = boto3.client('sns')
 
 # Table references
 websocket_connections_table = dynamodb.Table('package-tracking-websocket-connections')
 packages_table = dynamodb.Table('package-tracking-packages')
+
+# Configuration
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
+SNS_TOPIC_PREFIX = 'fast-track-delivery-notifications-'
 
 def cors_response(status_code, body=None):
     """
@@ -268,12 +273,164 @@ def broadcast_to_subscribers(package_code, message):
     except Exception as e:
         print(f"Error broadcasting to subscribers: {str(e)}")
 
+def normalize_email_for_topic(email):
+    """
+    Normalize email to create a valid SNS topic name
+    SNS topic names can only contain alphanumeric characters, hyphens, and underscores
+    """
+    # Replace @ with -at- and . with -dot-
+    normalized = email.lower().replace('@', '-at-').replace('.', '-dot-')
+    # Remove any invalid characters
+    normalized = ''.join(c if c.isalnum() or c in ['-', '_'] else '-' for c in normalized)
+    return normalized
+
+def get_or_create_topic_for_email(email):
+    """
+    Get or create a unique SNS topic for a specific email address
+    This ensures each email only receives notifications for their own packages
+    
+    SNS create_topic is idempotent - if topic exists, it returns the existing one
+    """
+    try:
+        # Normalize email to create topic name
+        topic_name = f"{SNS_TOPIC_PREFIX}{normalize_email_for_topic(email)}"
+        
+        # SNS create_topic is idempotent - if topic exists, returns existing ARN
+        # If it doesn't exist, creates it. This is more efficient than listing all topics
+        try:
+            create_response = sns.create_topic(Name=topic_name)
+            topic_arn = create_response['TopicArn']
+            print(f"✅ Topic for {email}: {topic_arn}")
+            return topic_arn
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code == 'InvalidParameter':
+                # Topic name might be too long or invalid, try with hash
+                import hashlib
+                email_hash = hashlib.md5(email.encode()).hexdigest()[:8]
+                topic_name = f"{SNS_TOPIC_PREFIX}{email_hash}"
+                create_response = sns.create_topic(Name=topic_name)
+                topic_arn = create_response['TopicArn']
+                print(f"Created topic (with hash) for {email}: {topic_arn}")
+                return topic_arn
+            elif error_code == 'AuthorizationError':
+                print(f"No permission to create SNS topic. LabRole may need sns:CreateTopic permission")
+                raise
+            else:
+                print(f"Error creating topic: {str(e)}")
+                raise
+        
+    except Exception as e:
+        print(f"Error getting/creating topic for {email}: {str(e)}")
+        return None
+
+def send_email_via_sns(email, subject, message_body):
+    """
+    Send email notification via SNS using a dedicated topic per email
+    This ensures each email only receives notifications for their own packages
+    """
+    try:
+        if not email or '@' not in email:
+            print(f"Invalid email: {email}")
+            return False
+        
+        # Get or create topic for this specific email
+        topic_arn = get_or_create_topic_for_email(email)
+        if not topic_arn:
+            print(f"Could not get/create topic for {email}")
+            return False
+        
+        # Subscribe email to topic (if not already subscribed)
+        try:
+            # Check if already subscribed
+            subscriptions_response = sns.list_subscriptions_by_topic(TopicArn=topic_arn)
+            already_subscribed = any(
+                sub['Protocol'] == 'email' and sub['Endpoint'] == email 
+                for sub in subscriptions_response.get('Subscriptions', [])
+            )
+            
+            if not already_subscribed:
+                sns.subscribe(
+                    TopicArn=topic_arn,
+                    Protocol='email',
+                    Endpoint=email
+                )
+                print(f"Subscription request sent to {email} - user must confirm via email")
+            else:
+                # Check if subscription is confirmed
+                for sub in subscriptions_response.get('Subscriptions', []):
+                    if sub['Protocol'] == 'email' and sub['Endpoint'] == email:
+                        if sub['SubscriptionArn'] == 'PendingConfirmation':
+                            print(f"Subscription for {email} is pending confirmation")
+                        else:
+                            print(f"{email} is already subscribed and confirmed")
+                        break
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code not in ['SubscriptionLimitExceeded', 'InvalidParameter']:
+                print(f"Error subscribing email: {str(e)}")
+        
+        sns.publish(
+            TopicArn=topic_arn,
+            Subject=subject,
+            Message=message_body
+        )
+        
+        print(f"✅ Email notification published to SNS topic for {email}: {subject}")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending email via SNS: {str(e)}")
+        return False
+
 def handle_package_created_notification(message_data):
     """Handle package creation notification"""
     try:
         package_code = message_data.get('code')
         user_id = message_data.get('user_id')
         timestamp = message_data.get('timestamp')
+        
+        # Get package to find receiver email (destinatario)
+        receiver_email = None
+        receiver_name = None
+        try:
+            package_response = packages_table.query(
+                IndexName='code-index',
+                KeyConditionExpression='code = :code',
+                ExpressionAttributeValues={':code': package_code}
+            )
+            if package_response['Items']:
+                package = package_response['Items'][0]
+                receiver_email = package.get('receiver_email')
+                receiver_name = package.get('receiver_name')
+                print(f"Package {package_code} - Receiver: {receiver_name} ({receiver_email})")
+            else:
+                print(f"Package {package_code} not found in database")
+        except Exception as e:
+            print(f"Error fetching package: {str(e)}")
+        
+        # Send email notification ONLY to receiver (destinatario)
+        if receiver_email and '@' in receiver_email:
+            subject = f"Paquete {package_code} en Camino - FastTrack Delivery"
+            greeting = f"Hola {receiver_name}," if receiver_name else "Hola,"
+            message = f"""
+{greeting}
+
+Tienes un paquete en camino hacia ti.
+
+Código de Paquete: {package_code}
+Estado: Creado y listo para envío
+Fecha: {timestamp}
+
+Puedes hacer seguimiento de tu paquete en cualquier momento usando el código de rastreo.
+            """
+            print(f"📧 Sending notification to receiver: {receiver_email} for package {package_code}")
+            send_email_via_sns(receiver_email, subject, message)
+        else:
+            if not receiver_email:
+                print(f"No receiver_email found for package {package_code}, skipping email notification")
+            else:
+                print(f"Invalid receiver_email format for package {package_code}: {receiver_email}")
         
         # Broadcast to WebSocket subscribers
         websocket_message = {
@@ -286,7 +443,6 @@ def handle_package_created_notification(message_data):
         
         broadcast_to_subscribers(package_code, websocket_message)
         
-        # Log notification
         print(f"Package creation notification sent for package {package_code}")
         
     except Exception as e:
@@ -296,9 +452,89 @@ def handle_track_updated_notification(message_data):
     """Handle track update notification"""
     try:
         package_code = message_data.get('code')
-        action = message_data.get('action')
+        action = message_data.get('track_action') or message_data.get('action')
         new_state = message_data.get('new_state')
         timestamp = message_data.get('timestamp')
+        
+        # Get package to find receiver email (destinatario)
+        receiver_email = None
+        receiver_name = None
+        try:
+            package_response = packages_table.query(
+                IndexName='code-index',
+                KeyConditionExpression='code = :code',
+                ExpressionAttributeValues={':code': package_code}
+            )
+            if package_response['Items']:
+                package = package_response['Items'][0]
+                receiver_email = package.get('receiver_email')
+                receiver_name = package.get('receiver_name')
+                print(f"Package {package_code} - Receiver: {receiver_name} ({receiver_email})")
+            else:
+                print(f"Package {package_code} not found in database")
+        except Exception as e:
+            print(f"Error fetching package: {str(e)}")
+        
+        # Determine notification message based on state
+        greeting = f"Hola {receiver_name}," if receiver_name else "Hola,"
+        
+        if new_state == 'DELIVERED':
+            subject = f"¡Paquete {package_code} Entregado! - FastTrack Delivery"
+            message = f"""
+{greeting}
+
+¡Tu paquete {package_code} ha sido entregado exitosamente!
+
+Código de Paquete: {package_code}
+Estado: Entregado
+Fecha: {timestamp}
+
+Gracias por usar FastTrack Delivery.
+            """
+        elif new_state == 'CANCELLED':
+            subject = f"Paquete {package_code} Cancelado - FastTrack Delivery"
+            message = f"""
+{greeting}
+
+El envío del paquete {package_code} ha sido cancelado.
+
+Código de Paquete: {package_code}
+Estado: Cancelado
+Fecha: {timestamp}
+
+Si tienes preguntas, por favor contacta con el remitente.
+            """
+        else:
+            subject = f"Paquete {package_code} - Actualización de Estado"
+            action_map = {
+                'SEND_DEPOT': 'Enviado al Depósito',
+                'ARRIVED_DEPOT': 'Llegó al Depósito',
+                'SEND_FINAL': 'Enviado a Destino Final',
+                'ARRIVED_FINAL': 'Llegó al Destino Final'
+            }
+            action_display = action_map.get(action, action)
+            message = f"""
+{greeting}
+
+El estado de tu paquete {package_code} ha sido actualizado.
+
+Código de Paquete: {package_code}
+Acción: {action_display}
+Estado: {new_state}
+Fecha: {timestamp}
+
+Puedes hacer seguimiento de tu paquete en cualquier momento.
+            """
+        
+        # Send email notification ONLY to receiver (destinatario)
+        if receiver_email and '@' in receiver_email:
+            print(f"📧 Sending notification to receiver: {receiver_email} for package {package_code}")
+            send_email_via_sns(receiver_email, subject, message)
+        else:
+            if not receiver_email:
+                print(f"No receiver_email found for package {package_code}, skipping email notification")
+            else:
+                print(f"Invalid receiver_email format for package {package_code}: {receiver_email}")
         
         # Broadcast to WebSocket subscribers
         websocket_message = {
@@ -312,7 +548,6 @@ def handle_track_updated_notification(message_data):
         
         broadcast_to_subscribers(package_code, websocket_message)
         
-        # Log notification
         print(f"Track update notification sent for package {package_code}")
         
     except Exception as e:

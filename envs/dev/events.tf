@@ -43,3 +43,26 @@ resource "aws_sqs_queue_policy" "main" {
   queue_url = aws_sqs_queue.notifications_queue.id
   policy    = data.aws_iam_policy_document.sqs_policy.json
 }
+
+# Lambda Event Source Mapping: SQS -> Lambda
+# This connects the SQS queue to the notifications Lambda function
+resource "aws_lambda_event_source_mapping" "sqs_to_notifications" {
+  event_source_arn = aws_sqs_queue.notifications_queue.arn
+  function_name    = module.lambdas["notifications"].function_name
+  batch_size       = 10
+  enabled          = true
+
+  depends_on = [
+    module.lambdas["notifications"],
+    aws_sqs_queue.notifications_queue
+  ]
+}
+
+# IAM Permission for SQS to invoke Lambda
+resource "aws_lambda_permission" "sqs_invoke_notifications" {
+  statement_id  = "AllowSQSToInvokeNotificationsLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambdas["notifications"].function_name
+  principal     = "sqs.amazonaws.com"
+  source_arn    = aws_sqs_queue.notifications_queue.arn
+}

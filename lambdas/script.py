@@ -33,6 +33,11 @@ def package_lambda(function_name: str, source_file: str):
     temp_dir = tempfile.mkdtemp()
     print(f"Temp dir: {source_file}")
     shutil.copy(source_file, temp_dir)
+    
+    # Copy email_templates.py if it exists (needed by packages_handler and tracks_handler)
+    if os.path.isfile("email_templates.py"):
+        shutil.copy("email_templates.py", temp_dir)
+        print("→ Copied email_templates.py")
 
     # Install dependencies if requirements.txt exists
     if os.path.isfile("requirements.txt"):

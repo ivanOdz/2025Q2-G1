@@ -2,12 +2,21 @@ import json
 import boto3
 import uuid
 import os
+import hashlib
 from datetime import datetime
 from botocore.exceptions import ClientError
+from email_templates import (
+    get_package_delivered_template,
+    get_package_cancelled_template,
+    get_package_status_update_template
+)
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 sns = boto3.client('sns')
+
+# SNS Topic prefix for email-specific topics
+SNS_TOPIC_PREFIX = 'fast-track-delivery-notifications-'
 
 # Table references
 tracks_table = dynamodb.Table('package-tracking-tracks')
@@ -16,6 +25,78 @@ depots_table = dynamodb.Table('package-tracking-depots')
 addresses_table = dynamodb.Table('package-tracking-addresses')
 
 ALLOWED_PRIORITIES = {"NORMAL", "PRIORITY", "HIGH_PRIORITY"}
+
+def normalize_email_for_topic(email):
+    """
+    Normalize email to create a valid SNS topic name
+    SNS topic names can only contain alphanumeric characters, hyphens, and underscores
+    """
+    # Replace @ with -at- and . with -dot-
+    normalized = email.lower().replace('@', '-at-').replace('.', '-dot-')
+    normalized = ''.join(c if c.isalnum() or c in ['-', '_'] else '-' for c in normalized)
+    return normalized
+
+def get_or_create_topic_for_email(email):
+    """
+    Get or create a unique SNS topic for a specific email address
+    SNS create_topic is idempotent - if topic exists, it returns the existing one
+    """
+    try:
+        if not email or '@' not in email:
+            print(f"Invalid email: {email}")
+            return None
+        
+        topic_name = f"{SNS_TOPIC_PREFIX}{normalize_email_for_topic(email)}"
+        
+        # SNS create_topic is idempotent - if topic exists, returns existing ARN
+        try:
+            create_response = sns.create_topic(Name=topic_name)
+            topic_arn = create_response['TopicArn']
+            print(f"✅ Topic for {email}: {topic_arn}")
+            return topic_arn
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code == 'InvalidParameter':
+                # Topic name might be too long or invalid, try with hash
+                email_hash = hashlib.md5(email.encode()).hexdigest()[:8]
+                topic_name = f"{SNS_TOPIC_PREFIX}{email_hash}"
+                create_response = sns.create_topic(Name=topic_name)
+                topic_arn = create_response['TopicArn']
+                print(f"Created topic (with hash) for {email}: {topic_arn}")
+                return topic_arn
+            else:
+                print(f"Error creating topic: {str(e)}")
+                return None
+        
+    except Exception as e:
+        print(f"Error getting/creating topic for {email}: {str(e)}")
+        return None
+
+def subscribe_email_to_topic(email, topic_arn):
+    """
+    Subscribe email to SNS topic if not already subscribed
+    """
+    try:
+        # Check if already subscribed
+        subscriptions_response = sns.list_subscriptions_by_topic(TopicArn=topic_arn)
+        already_subscribed = any(
+            sub['Protocol'] == 'email' and sub['Endpoint'] == email 
+            for sub in subscriptions_response.get('Subscriptions', [])
+        )
+        
+        if not already_subscribed:
+            sns.subscribe(
+                TopicArn=topic_arn,
+                Protocol='email',
+                Endpoint=email
+            )
+            print(f"Subscription request sent to {email}")
+        else:
+            print(f"{email} is already subscribed")
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code not in ['SubscriptionLimitExceeded', 'InvalidParameter']:
+            print(f"Warning: Error subscribing email: {str(e)}")
 
 def normalize_priority(value):
     if not value:
@@ -241,22 +322,62 @@ def create_track(package_code, track_data, user_id, user_role):
             ExpressionAttributeValues=expr_attr_values
         )
         
-        # Publish to SNS for notifications
-        sns_message = {
-            'package_id': package_id,
-            'code': package_code,
-            'track_id': track_id,
-            'action': action,
-            'new_state': new_state,
-            'user_id': user_id,
-            'timestamp': datetime.utcnow().isoformat()
-        }
+        # Publish to SNS topic specific to receiver email
+        receiver_email = package_data.get('receiver_email')
+        receiver_name = package_data.get('receiver_name')
         
-        sns.publish(
-            TopicArn=os.environ['SNS_TOPIC_ARN'],
-            Message=json.dumps(sns_message),
-            Subject='Package Track Updated'
-        )
+        if receiver_email and '@' in receiver_email:
+            topic_arn = get_or_create_topic_for_email(receiver_email)
+            if topic_arn:
+                # Subscribe email to topic if not already subscribed
+                subscribe_email_to_topic(receiver_email, topic_arn)
+                
+                # Get depot name if depot_id exists
+                depot_name = None
+                depot_id = track_item.get('depot_id')
+                if depot_id:
+                    try:
+                        depot_response = depots_table.get_item(Key={'depot_id': depot_id})
+                        if 'Item' in depot_response:
+                            depot_name = depot_response['Item'].get('name')
+                    except Exception as e:
+                        print(f"Warning: Could not retrieve depot name: {str(e)}")
+                
+                # Get email template based on state
+                timestamp = datetime.utcnow().isoformat()
+                
+                if new_state == 'DELIVERED':
+                    subject, message_body = get_package_delivered_template(
+                        receiver_name=receiver_name,
+                        package_code=package_code,
+                        timestamp=timestamp
+                    )
+                elif new_state == 'CANCELLED':
+                    subject, message_body = get_package_cancelled_template(
+                        receiver_name=receiver_name,
+                        package_code=package_code,
+                        timestamp=timestamp
+                    )
+                else:
+                    subject, message_body = get_package_status_update_template(
+                        receiver_name=receiver_name,
+                        package_code=package_code,
+                        action=action,
+                        depot_name=depot_name,
+                        new_state=new_state,
+                        timestamp=timestamp
+                    )
+                
+                sns.publish(
+                    TopicArn=topic_arn,
+                    Subject=subject,
+                    Message=message_body
+                )
+                print(f"Notification sent to {receiver_email} for package {package_code} - {action}")
+            else:
+                print(f"Could not create/get topic for {receiver_email}")
+        else:
+            print(f"Invalid or missing receiver_email for package {package_code}")
         
         return cors_response(201, track_item)
         
