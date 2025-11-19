@@ -38,14 +38,15 @@ def safe_remove_directory(dir_path):
         return False
 
 def main():
-    if len(sys.argv) != 5:
-        print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID y el Client ID de Cognito.")
+    if len(sys.argv) != 6:
+        print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID, el Client ID de Cognito y la URL del WebSocket.")
         sys.exit(1)
 
     frontend_bucket_name = sys.argv[1]
     api_arn = sys.argv[2]
     cognito_user_pool_id = sys.argv[3]
     cognito_client_id = sys.argv[4]
+    websocket_url = sys.argv[5]
     
     # Convertir ARN de API Gateway a URL HTTP (si es necesario)
     # Ahora esperamos que se pase la URL de invocación directamente desde Terraform
@@ -69,8 +70,8 @@ def main():
         api_url = api_arn
         print(f"Usando valor directamente: {api_url}")
 
-    if not frontend_bucket_name or not api_url or not cognito_user_pool_id or not cognito_client_id:
-        print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID y el Client ID de Cognito.")
+    if not frontend_bucket_name or not api_url or not cognito_user_pool_id or not cognito_client_id or not websocket_url:
+        print("Error: Faltan argumentos. Se requiere el nombre del bucket, la URL del API Gateway, el User Pool ID, el Client ID de Cognito y la URL del WebSocket.")
         sys.exit(1)
 
     print("-> 1. Verificando y obteniendo la aplicación Frontend desde Git...")
@@ -108,7 +109,8 @@ def main():
     filtered_lines = [line for line in lines if not any(line.startswith(var) for var in [
         "REACT_APP_API_URL=", 
         "REACT_APP_COGNITO_USER_POOL_ID=", 
-        "REACT_APP_COGNITO_CLIENT_ID="
+        "REACT_APP_COGNITO_CLIENT_ID=",
+        "REACT_APP_WEBSOCKET_URL="
     ])]
     
     # La URL ya incluye el stage, no necesitamos agregar /api
@@ -119,11 +121,13 @@ def main():
     filtered_lines.append(f"REACT_APP_API_URL={final_api_url}\n")
     filtered_lines.append(f"REACT_APP_COGNITO_USER_POOL_ID={cognito_user_pool_id}\n")
     filtered_lines.append(f"REACT_APP_COGNITO_CLIENT_ID={cognito_client_id}\n")
+    filtered_lines.append(f"REACT_APP_WEBSOCKET_URL={websocket_url}\n")
     
     print(f"Escribiendo en {env_file}:")
     print(f"  REACT_APP_API_URL={final_api_url}")
     print(f"  REACT_APP_COGNITO_USER_POOL_ID={cognito_user_pool_id}")
     print(f"  REACT_APP_COGNITO_CLIENT_ID={cognito_client_id}")
+    print(f"  REACT_APP_WEBSOCKET_URL={websocket_url}")
 
     # Escribir el archivo modificado
     with open(env_file, 'w') as f:

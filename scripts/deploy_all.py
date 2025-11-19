@@ -135,6 +135,7 @@ def terraform_deploy(env):
             "api_url": tf_output("api_gateway_invoke_url"),
             "pool_id": tf_output("cognito_user_pool_id"),
             "client_id": tf_output("cognito_user_pool_client_id"),
+            "websocket_url": tf_output("websocket_api_endpoint"),
         }
 
         print("\n--- Terraform Outputs ---")
@@ -166,7 +167,8 @@ def deploy_frontend(outputs):
         outputs["bucket"],
         outputs["api_url"],
         outputs["pool_id"],
-        outputs["client_id"]
+        outputs["client_id"],
+        outputs["websocket_url"]
     ])
 
     print("✅ Frontend deployment complete.")
