@@ -3,13 +3,28 @@ import boto3
 import os
 from datetime import datetime, timezone
 from botocore.exceptions import ClientError
+from boto3.dynamodb.conditions import Attr
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
-apigatewaymanagementapi = boto3.client('apigatewaymanagementapi')
 sns = boto3.client('sns')
+
+# WebSocket API Gateway Management API client (must be initialized with endpoint URL)
+_ws_client = None
+
+def get_ws_client():
+    """Build WebSocket client dynamically with endpoint URL"""
+    global _ws_client
+    if _ws_client is None:
+        endpoint = os.environ.get('WEBSOCKET_API_ENDPOINT')
+        if not endpoint:
+            print("❌ WEBSOCKET_API_ENDPOINT missing!")
+            return None
+        _ws_client = boto3.client('apigatewaymanagementapi', endpoint_url=endpoint)
+        print(f"✅ Initialized WebSocket client with endpoint: {endpoint}")
+    return _ws_client
 
 # Table references
 websocket_connections_table = dynamodb.Table('package-tracking-websocket-connections')
@@ -46,7 +61,7 @@ def lambda_handler(event, context):
     
     try:
         # Check if this is a WebSocket event
-        if 'requestContext' in event and 'routeKey' in event:
+        if 'requestContext' in event and 'routeKey' in event.get('requestContext', {}):
             return handle_websocket_event(event, context)
         
         # Check if this is an SQS event
@@ -103,12 +118,12 @@ def handle_websocket_event(event, context):
         elif route_key == '$default':
             return handle_websocket_message(event, context)
         else:
-            print(f"Unknown WebSocket route: {route_key}")
-            return cors_response(400, {'error': 'Unknown WebSocket route'})
+            print(f"⚠️ Unknown WebSocket route: {route_key}")
+            return {'statusCode': 400}
             
     except Exception as e:
-        print(f"Error handling WebSocket event: {str(e)}")
-        return cors_response(500, {'error': 'Failed to process WebSocket event'})
+        print(f"❌ Error handling WebSocket event: {str(e)}")
+        return {'statusCode': 500}
 
 def handle_websocket_connect(event, context):
     """Handle WebSocket connection"""
@@ -131,13 +146,14 @@ def handle_websocket_connect(event, context):
             }
         )
         
-        print(f"WebSocket connection established: {connection_id} for user: {user_id}")
+        print(f"✅ WebSocket connection established: {connection_id} for user: {user_id}")
         
-        return cors_response(200, {'message': 'Connected'})
+        # WebSocket $connect must return only statusCode, no body
+        return {'statusCode': 200}
         
     except Exception as e:
-        print(f"Error handling WebSocket connect: {str(e)}")
-        return cors_response(500, {'error': 'Failed to connect'})
+        print(f"❌ Error handling WebSocket connect: {str(e)}")
+        return {'statusCode': 500}
 
 def handle_websocket_disconnect(event, context):
     """Handle WebSocket disconnection"""
@@ -149,13 +165,14 @@ def handle_websocket_disconnect(event, context):
             Key={'connection_id': connection_id}
         )
         
-        print(f"WebSocket connection closed: {connection_id}")
+        print(f"✅ WebSocket connection closed: {connection_id}")
         
-        return cors_response(200, {'message': 'Disconnected'})
+        # WebSocket $disconnect must return only statusCode, no body
+        return {'statusCode': 200}
         
     except Exception as e:
-        print(f"Error handling WebSocket disconnect: {str(e)}")
-        return cors_response(500, {'error': 'Failed to disconnect'})
+        print(f"❌ Error handling WebSocket disconnect: {str(e)}")
+        return {'statusCode': 500}
 
 def handle_websocket_message(event, context):
     """Handle WebSocket messages"""
@@ -174,12 +191,19 @@ def handle_websocket_message(event, context):
         elif action == 'ping':
             return handle_ping(connection_id)
         else:
-            print(f"Unknown WebSocket message action: {action}")
-            return cors_response(400, {'error': 'Unknown action'})
+            print(f"⚠️ Unknown WebSocket message action: {action}")
+            # Echo message back for debugging
+            send_websocket_message(connection_id, {
+                'action': 'echo',
+                'received': body
+            })
+            # Return 200 to avoid disconnecting the WebSocket
+            # The echo message already informs the client
+            return {'statusCode': 200}
             
     except Exception as e:
-        print(f"Error handling WebSocket message: {str(e)}")
-        return cors_response(500, {'error': 'Failed to process message'})
+        print(f"❌ Error handling WebSocket message: {str(e)}")
+        return {'statusCode': 500}
 
 def handle_subscribe_to_package(connection_id, package_code):
     """Handle subscription to package updates"""
@@ -191,13 +215,20 @@ def handle_subscribe_to_package(connection_id, package_code):
             ExpressionAttributeValues={':package_code': package_code}
         )
         
-        print(f"Connection {connection_id} subscribed to package {package_code}")
-        
-        return cors_response(200, {'message': f'Subscribed to package {package_code}'})
+        print(f"✅ Connection {connection_id} subscribed to package {package_code}")
+
+        # Send confirmation message via WebSocket (not in response body)
+        send_websocket_message(connection_id, {
+            'action': 'subscribed',
+            'package_code': package_code
+        })
+
+        # WebSocket message handlers should return only statusCode
+        return {'statusCode': 200}
         
     except Exception as e:
         print(f"Error subscribing to package: {str(e)}")
-        return cors_response(500, {'error': 'Failed to subscribe'})
+        return {'statusCode': 500}
 
 def handle_unsubscribe_from_package(connection_id, package_code):
     """Handle unsubscription from package updates"""
@@ -208,13 +239,20 @@ def handle_unsubscribe_from_package(connection_id, package_code):
             UpdateExpression='REMOVE package_code'
         )
         
-        print(f"Connection {connection_id} unsubscribed from package {package_code}")
+        print(f"✅ Connection {connection_id} unsubscribed from package {package_code}")
         
-        return cors_response(200, {'message': f'Unsubscribed from package {package_code}'})
+        # Send confirmation message via WebSocket (not in response body)
+        send_websocket_message(connection_id, {
+            'action': 'unsubscribed',
+            'package_code': package_code
+        })
+
+        # WebSocket message handlers should return only statusCode
+        return {'statusCode': 200}
         
     except Exception as e:
         print(f"Error unsubscribing from package: {str(e)}")
-        return cors_response(500, {'error': 'Failed to unsubscribe'})
+        return {'statusCode': 500}
 
 def handle_ping(connection_id):
     """Handle ping message"""
@@ -222,28 +260,30 @@ def handle_ping(connection_id):
         # Send pong response
         send_websocket_message(connection_id, {'action': 'pong', 'timestamp': datetime.now(timezone.utc).isoformat()})
         
-        return cors_response(200, {'message': 'Pong'})
+        # Pong is sent via send_websocket_message, just return success
+        return {'statusCode': 200}
         
     except Exception as e:
-        print(f"Error handling ping: {str(e)}")
-        return cors_response(500, {'error': 'Failed to ping'})
+        print(f"❌ Error handling ping: {str(e)}")
+        return {'statusCode': 500}
 
 def send_websocket_message(connection_id, message):
     """Send message to WebSocket connection"""
     try:
-        # Get WebSocket API endpoint from environment
-        endpoint = os.environ.get('WEBSOCKET_API_ENDPOINT')
-        if not endpoint:
-            print("WebSocket API endpoint not configured")
+        # Get WebSocket client with proper endpoint
+        ws = get_ws_client()
+        if not ws:
+            print("❌ Cannot send message: WebSocket client not initialized")
             return False
         
         # Send message via API Gateway Management API
-        apigatewaymanagementapi.post_to_connection(
+        # Note: Data must be bytes in Python 3
+        ws.post_to_connection(
             ConnectionId=connection_id,
-            Data=json.dumps(message)
+            Data=json.dumps(message).encode('utf-8')
         )
         
-        print(f"Message sent to connection {connection_id}: {message}")
+        print(f"✅ Message sent to connection {connection_id}: {message}")
         return True
         
     except ClientError as e:
@@ -262,8 +302,7 @@ def broadcast_to_subscribers(package_code, message):
     try:
         # Find all connections subscribed to this package
         response = websocket_connections_table.scan(
-            FilterExpression='package_code = :package_code',
-            ExpressionAttributeValues={':package_code': package_code}
+            FilterExpression=Attr('package_code').eq(package_code)
         )
         
         connections = response.get('Items', [])
