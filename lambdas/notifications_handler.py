@@ -551,7 +551,7 @@ def handle_track_updated_notification(message_data):
         except Exception as e:
             print(f"Error fetching package: {str(e)}")
         
-        # Determine notification message based on state
+        # --------- EMAIL (igual que antes) ----------
         greeting = f"Hola {receiver_name}," if receiver_name else "Hola,"
         
         if new_state == 'DELIVERED':
@@ -602,7 +602,6 @@ Fecha: {timestamp}
 Puedes hacer seguimiento de tu paquete en cualquier momento.
             """
         
-        # Send email notification ONLY to receiver (destinatario)
         if receiver_email and '@' in receiver_email:
             print(f"📧 Sending notification to receiver: {receiver_email} for package {package_code}")
             send_email_via_sendgrid(receiver_email, subject, message)
@@ -612,14 +611,27 @@ Puedes hacer seguimiento de tu paquete en cualquier momento.
             else:
                 print(f"Invalid receiver_email format for package {package_code}: {receiver_email}")
         
-        # Broadcast to WebSocket subscribers
+        # --------- WEBSOCKET (IMPORTANTE) ----------
+
+        # Payload del track que el front espera
+        track_payload = {
+            "code": package_code,
+            "action": action,        # 👈 ESTA es la acción del track (SEND_DEPOT, ARRIVED_FINAL, etc.)
+            "timestamp": timestamp,
+            "new_state": new_state,
+        }
+
+        # Copiamos algunos campos extra si vienen del tracks_handler
+        for extra_field in ["depot_id", "depot_name", "comment", "track_id", "id"]:
+            if extra_field in message_data:
+                track_payload[extra_field] = message_data[extra_field]
+
         websocket_message = {
-            'action': 'package_track_updated',
-            'package_code': package_code,
-            'track_action': action,
-            'new_state': new_state,
-            'timestamp': timestamp,
-            'message': f'Package {package_code} status updated to {new_state}'
+            "action": "package_track_updated",   # tipo de evento
+            "package_code": package_code,
+            "track": track_payload,              # 👈 acá va el track que usa el front
+            "timestamp": timestamp,
+            "message": f"Package {package_code} status updated to {new_state}",
         }
         
         broadcast_to_subscribers(package_code, websocket_message)
@@ -628,6 +640,7 @@ Puedes hacer seguimiento de tu paquete en cualquier momento.
         
     except Exception as e:
         print(f"Error handling track updated notification: {str(e)}")
+
 
 def handle_image_uploaded_notification(message_data):
     """Handle image upload notification"""
