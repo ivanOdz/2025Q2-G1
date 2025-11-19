@@ -3,6 +3,8 @@ import boto3
 import os
 from datetime import datetime, timezone
 from botocore.exceptions import ClientError
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
@@ -16,6 +18,8 @@ packages_table = dynamodb.Table('package-tracking-packages')
 # Configuration
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 SNS_TOPIC_PREFIX = 'fast-track-delivery-notifications-'
+SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
+SENDGRID_FROM_EMAIL = os.environ.get('SENDGRID_FROM_EMAIL', 'fasttracktpcloud@gmail.com')
 
 def cors_response(status_code, body=None):
     """
@@ -383,6 +387,39 @@ def send_email_via_sns(email, subject, message_body):
         print(f"Error sending email via SNS: {str(e)}")
         return False
 
+def send_email_via_sendgrid(email, subject, message_body):
+    """
+    Send email notification via SendGrid
+    This is the centralized email sending method
+    """
+    try:
+        if not email or '@' not in email:
+            print(f"Invalid email: {email}")
+            return False
+        
+        if not SENDGRID_API_KEY:
+            print("SENDGRID_API_KEY not configured, skipping email")
+            return False
+        
+        # Create SendGrid message
+        message = Mail(
+            from_email=SENDGRID_FROM_EMAIL,
+            to_emails=email,
+            subject=subject,
+            plain_text_content=message_body
+        )
+        
+        # Send email via SendGrid
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(message)
+        
+        print(f"✅ Email sent via SendGrid to {email}: {subject} (Status: {response.status_code})")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending email via SendGrid: {str(e)}")
+        return False
+
 def handle_package_created_notification(message_data):
     """Handle package creation notification"""
     try:
@@ -409,7 +446,7 @@ def handle_package_created_notification(message_data):
         except Exception as e:
             print(f"Error fetching package: {str(e)}")
         
-        # Send email notification ONLY to receiver (destinatario)
+        # Send email notification to receiver (destinatario)
         if receiver_email and '@' in receiver_email:
             subject = f"Paquete {package_code} en Camino - FastTrack Delivery"
             greeting = f"Hola {receiver_name}," if receiver_name else "Hola,"
@@ -425,7 +462,7 @@ Fecha: {timestamp}
 Puedes hacer seguimiento de tu paquete en cualquier momento usando el código de rastreo.
             """
             print(f"📧 Sending notification to receiver: {receiver_email} for package {package_code}")
-            send_email_via_sns(receiver_email, subject, message)
+            send_email_via_sendgrid(receiver_email, subject, message)
         else:
             if not receiver_email:
                 print(f"No receiver_email found for package {package_code}, skipping email notification")
@@ -529,7 +566,7 @@ Puedes hacer seguimiento de tu paquete en cualquier momento.
         # Send email notification ONLY to receiver (destinatario)
         if receiver_email and '@' in receiver_email:
             print(f"📧 Sending notification to receiver: {receiver_email} for package {package_code}")
-            send_email_via_sns(receiver_email, subject, message)
+            send_email_via_sendgrid(receiver_email, subject, message)
         else:
             if not receiver_email:
                 print(f"No receiver_email found for package {package_code}, skipping email notification")

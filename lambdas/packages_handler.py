@@ -12,8 +12,10 @@ from email_templates import get_package_created_template
 dynamodb = boto3.resource('dynamodb')
 sns = boto3.client('sns')
 
-# SNS Topic prefix for email-specific topics
+# SNS Topic prefix for email-specific topics (legacy, kept for backward compatibility)
 SNS_TOPIC_PREFIX = 'fast-track-delivery-notifications-'
+# Main SNS topic for centralized notifications
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 
 # Table references
 packages_table = dynamodb.Table('package-tracking-packages')
@@ -257,36 +259,27 @@ def create_package(package_data, user_id):
 
         tracks_table.put_item(Item=track_item)
 
-        # Publish to SNS topic specific to receiver email
-        receiver_email = package_data['receiver_email']
-        if receiver_email and '@' in receiver_email:
-            topic_arn = get_or_create_topic_for_email(receiver_email)
-            if topic_arn:
-                # Subscribe email to topic if not already subscribed
-                subscribe_email_to_topic(receiver_email, topic_arn)
-                
-                # Get frontend URL for tracking link
-                frontend_url = os.environ.get('FRONTEND_URL', '')
-                tracking_link = f"{frontend_url}/track/{package_code}" if frontend_url else f"Track your package using code: {package_code}"
-                
-                # Get email template
-                subject, message_body = get_package_created_template(
-                    receiver_name=package_data.get('receiver_name', ''),
-                    package_code=package_code,
-                    tracking_link=tracking_link,
-                    timestamp=datetime.utcnow().isoformat()
-                )
-                
+        # Publish to main SNS topic for centralized notifications (via SQS → notifications_handler → SendGrid)
+        if SNS_TOPIC_ARN:
+            sns_message = {
+                'action': 'package_created',
+                'package_id': package_id,
+                'code': package_code,
+                'user_id': user_id,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+            try:
                 sns.publish(
-                    TopicArn=topic_arn,
-                    Subject=subject,
-                    Message=message_body
+                    TopicArn=SNS_TOPIC_ARN,
+                    Message=json.dumps(sns_message),
+                    Subject='Package Created'
                 )
-                print(f"Notification sent to {receiver_email} for package {package_code}")
-            else:
-                print(f"Could not create/get topic for {receiver_email}")
+                print(f"✅ Published package_created notification to main SNS topic for package {package_code}")
+            except Exception as e:
+                print(f"Error publishing to SNS topic: {str(e)}")
         else:
-            print(f"Invalid receiver_email: {receiver_email}")
+            print("SNS_TOPIC_ARN not configured, skipping notification")
         
         # Convert Decimal to float for response
         if package_item['weight']:

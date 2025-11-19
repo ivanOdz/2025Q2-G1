@@ -25,6 +25,28 @@ resource "aws_s3_object" "lambda_artifacts" {
   etag = filemd5("${var.lambda_zip_path}/${each.value}.zip")
 }
 
+# Lambda Layer for SendGrid
+resource "aws_s3_object" "lambda_layer" {
+  bucket       = module.lambda_code_bucket.bucket_id
+  key          = "layer/sendgrid-layer.zip"
+  source       = "${path.module}/../../lambdas/layer/sendgrid-layer.zip"
+  content_type = "application/zip"
+  
+  etag = filemd5("${path.module}/../../lambdas/layer/sendgrid-layer.zip")
+}
+
+resource "aws_lambda_layer_version" "sendgrid" {
+  layer_name          = "${local.base_name}-sendgrid-layer"
+  description         = "SendGrid 6.12.4 and dependencies for Lambda functions"
+  s3_bucket           = module.lambda_code_bucket.bucket_id
+  s3_key              = aws_s3_object.lambda_layer.key
+  s3_object_version   = null  # Avoid s3:GetObjectVersion permission requirement
+  compatible_runtimes = ["python3.11"]
+  compatible_architectures = ["x86_64", "arm64"]
+  
+  depends_on = [aws_s3_object.lambda_layer]
+}
+
 # 3) Crear Lambdas con el módulo, una por handler
 module "lambdas" {
   source = "../../modules/lambda-api"
@@ -36,7 +58,7 @@ module "lambdas" {
   handler      = "${each.value}.lambda_handler"
   role_arn     = data.aws_iam_role.lab_role.arn
 
-  runtime   = "python3.12"
+  runtime   = "python3.11"
   timeout_s = 15
   memory_mb = 256
 
@@ -50,15 +72,20 @@ module "lambdas" {
   subnet_ids = module.vpc.private_subnets
   sg_ids     = [aws_security_group.lambda_sg.id]
 
+  # Lambda Layer (SendGrid 6.12.4 dependencies)
+  layers = [aws_lambda_layer_version.sendgrid.arn]
+
   # Variables de entorno usadas por los handlers
   env = {
     SNS_TOPIC_ARN  = aws_sns_topic.notifications.arn,
     S3_BUCKET_NAME = module.images_bucket.bucket_id,
-    WEBSOCKET_API_ENDPOINT = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}"
+    WEBSOCKET_API_ENDPOINT = "https://${aws_apigatewayv2_api.websocket_api.id}.execute-api.${data.aws_region.current.id}.amazonaws.com/${aws_apigatewayv2_stage.websocket_stage.name}",
+    SENDGRID_API_KEY = var.sendgrid_api_key,
+    SENDGRID_FROM_EMAIL = var.sendgrid_from_email
   }
 
   # Garantizar que primero se creen bucket y objetos
-  depends_on = [module.lambda_code_bucket, aws_s3_object.lambda_artifacts, module.vpc, aws_sns_topic.notifications, aws_apigatewayv2_api.websocket_api, aws_apigatewayv2_stage.websocket_stage]
+  depends_on = [module.lambda_code_bucket, aws_s3_object.lambda_artifacts, aws_s3_object.lambda_layer, aws_lambda_layer_version.sendgrid, module.vpc, aws_sns_topic.notifications, aws_apigatewayv2_api.websocket_api, aws_apigatewayv2_stage.websocket_stage]
 }
 
 # 4) Permisos para que API Gateway invoque cada Lambda

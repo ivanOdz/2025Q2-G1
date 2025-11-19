@@ -3,6 +3,9 @@
 terraform.tfstate
 terraform.tfstate.backup
 lambdas/packaged
+lambdas/packaged/.shared_deps
+lambdas/packaged/.*.cache
+lambdas/layer
 deprecated_modules
 dev.tfvars
 .idea

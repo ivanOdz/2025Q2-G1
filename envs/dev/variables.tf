@@ -101,3 +101,17 @@ variable "dynamodb_deletion_protection" {
   type        = bool
   default     = false
 }
+
+# SendGrid Configuration
+variable "sendgrid_api_key" {
+  description = "SendGrid API key for sending emails"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "sendgrid_from_email" {
+  description = "From email address for SendGrid emails"
+  type        = string
+  default     = "noreply@fasttrackdelivery.com"
+}

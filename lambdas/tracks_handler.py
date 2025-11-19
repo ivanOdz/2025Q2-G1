@@ -15,8 +15,10 @@ from email_templates import (
 dynamodb = boto3.resource('dynamodb')
 sns = boto3.client('sns')
 
-# SNS Topic prefix for email-specific topics
+# SNS Topic prefix for email-specific topics (legacy, kept for backward compatibility)
 SNS_TOPIC_PREFIX = 'fast-track-delivery-notifications-'
+# Main SNS topic for centralized notifications
+SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN', '')
 
 # Table references
 tracks_table = dynamodb.Table('package-tracking-tracks')
@@ -322,62 +324,27 @@ def create_track(package_code, track_data, user_id, user_role):
             ExpressionAttributeValues=expr_attr_values
         )
         
-        # Publish to SNS topic specific to receiver email
-        receiver_email = package_data.get('receiver_email')
-        receiver_name = package_data.get('receiver_name')
-        
-        if receiver_email and '@' in receiver_email:
-            topic_arn = get_or_create_topic_for_email(receiver_email)
-            if topic_arn:
-                # Subscribe email to topic if not already subscribed
-                subscribe_email_to_topic(receiver_email, topic_arn)
-                
-                # Get depot name if depot_id exists
-                depot_name = None
-                depot_id = track_item.get('depot_id')
-                if depot_id:
-                    try:
-                        depot_response = depots_table.get_item(Key={'depot_id': depot_id})
-                        if 'Item' in depot_response:
-                            depot_name = depot_response['Item'].get('name')
-                    except Exception as e:
-                        print(f"Warning: Could not retrieve depot name: {str(e)}")
-                
-                # Get email template based on state
-                timestamp = datetime.utcnow().isoformat()
-                
-                if new_state == 'DELIVERED':
-                    subject, message_body = get_package_delivered_template(
-                        receiver_name=receiver_name,
-                        package_code=package_code,
-                        timestamp=timestamp
-                    )
-                elif new_state == 'CANCELLED':
-                    subject, message_body = get_package_cancelled_template(
-                        receiver_name=receiver_name,
-                        package_code=package_code,
-                        timestamp=timestamp
-                    )
-                else:
-                    subject, message_body = get_package_status_update_template(
-                        receiver_name=receiver_name,
-                        package_code=package_code,
-                        action=action,
-                        depot_name=depot_name,
-                        new_state=new_state,
-                        timestamp=timestamp
-                    )
-                
+        # Publish to main SNS topic for centralized notifications (via SQS → notifications_handler → SendGrid)
+        if SNS_TOPIC_ARN:
+            sns_message = {
+                'action': 'package_track_updated',
+                'code': package_code,
+                'track_action': action,
+                'new_state': new_state,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+            try:
                 sns.publish(
-                    TopicArn=topic_arn,
-                    Subject=subject,
-                    Message=message_body
+                    TopicArn=SNS_TOPIC_ARN,
+                    Message=json.dumps(sns_message),
+                    Subject='Package Track Updated'
                 )
-                print(f"Notification sent to {receiver_email} for package {package_code} - {action}")
-            else:
-                print(f"Could not create/get topic for {receiver_email}")
+                print(f"✅ Published package_track_updated notification to main SNS topic for package {package_code} - {action}")
+            except Exception as e:
+                print(f"Error publishing to SNS topic: {str(e)}")
         else:
-            print(f"Invalid or missing receiver_email for package {package_code}")
+            print("SNS_TOPIC_ARN not configured, skipping notification")
         
         return cors_response(201, track_item)
         
